@@ -643,9 +643,32 @@
         }
 
         /* COMPUTED SENSORS */
-        .computed-sensors-grid {
+        .computed-sensors-columns {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .computed-sensors-columns { grid-template-columns: 1fr; }
+        }
+
+        .computed-sensor-column-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .computed-sensors-grid {
+            display: flex;
+            flex-direction: column;
             gap: 1rem;
         }
 
@@ -733,6 +756,12 @@
             color: var(--color-primary);
             text-decoration: underline;
         }
+
+        .prediction-sensor-updated {
+            font-size: 0.68rem;
+            color: var(--text-secondary);
+            margin-top: 0.2rem;
+        }
     </style>
 </head>
 <body>
@@ -795,11 +824,17 @@
                     </div>
                     <div class="info-item">
                         <span class="info-label"><i data-lucide="sun"></i> Predicted today</span>
-                        <span class="info-value metric prediction-sensor-link" id="rf_pred_today" data-entity-id="sensor.heat_pump_pred_today_rf" title="Click to view history in Home Assistant">-</span>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                            <span class="info-value metric prediction-sensor-link" id="rf_pred_today" data-entity-id="sensor.heat_pump_pred_today_rf" title="Click to view history in Home Assistant">-</span>
+                            <span class="prediction-sensor-updated" data-entity-id="sensor.heat_pump_pred_today_rf">-</span>
+                        </div>
                     </div>
                     <div class="info-item">
                         <span class="info-label"><i data-lucide="sunrise"></i> Predicted tomorrow</span>
-                        <span class="info-value metric prediction-sensor-link" id="rf_pred_tomorrow" data-entity-id="sensor.heat_pump_pred_tomorrow_rf" title="Click to view history in Home Assistant">-</span>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                            <span class="info-value metric prediction-sensor-link" id="rf_pred_tomorrow" data-entity-id="sensor.heat_pump_pred_tomorrow_rf" title="Click to view history in Home Assistant">-</span>
+                            <span class="prediction-sensor-updated" data-entity-id="sensor.heat_pump_pred_tomorrow_rf">-</span>
+                        </div>
                     </div>
                 </div>
                 <button class="btn btn-rf" id="btn_train_rf" onclick="trainModel('rf')">
@@ -834,11 +869,17 @@
                     </div>
                     <div class="info-item">
                         <span class="info-label"><i data-lucide="sun"></i> Predicted today</span>
-                        <span class="info-value metric prediction-sensor-link" id="linear_pred_today" data-entity-id="sensor.heat_pump_pred_today_linear" title="Click to view history in Home Assistant">-</span>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                            <span class="info-value metric prediction-sensor-link" id="linear_pred_today" data-entity-id="sensor.heat_pump_pred_today_linear" title="Click to view history in Home Assistant">-</span>
+                            <span class="prediction-sensor-updated" data-entity-id="sensor.heat_pump_pred_today_linear">-</span>
+                        </div>
                     </div>
                     <div class="info-item">
                         <span class="info-label"><i data-lucide="sunrise"></i> Predicted tomorrow</span>
-                        <span class="info-value metric prediction-sensor-link" id="linear_pred_tomorrow" data-entity-id="sensor.heat_pump_pred_tomorrow_linear" title="Click to view history in Home Assistant">-</span>
+                        <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                            <span class="info-value metric prediction-sensor-link" id="linear_pred_tomorrow" data-entity-id="sensor.heat_pump_pred_tomorrow_linear" title="Click to view history in Home Assistant">-</span>
+                            <span class="prediction-sensor-updated" data-entity-id="sensor.heat_pump_pred_tomorrow_linear">-</span>
+                        </div>
                     </div>
                 </div>
                 <button class="btn btn-linear" id="btn_train_linear" onclick="trainModel('linear')">
@@ -982,12 +1023,23 @@
                 <div class="card-header">
                     <div class="card-title-container">
                         <div class="card-icon success"><i data-lucide="radio-tower"></i></div>
-                        <h2>Computed Prediction Sensors</h2>
+                        <h2>Temperature / Humidity Sensors</h2>
                     </div>
                     <span style="font-size: 0.78rem; color: var(--text-secondary);">Click a sensor to view its history in Home Assistant</span>
                 </div>
-                <div class="computed-sensors-grid" id="computed_sensors_grid">
-                    <p class="modal-meta">Loading sensors...</p>
+                <div class="computed-sensors-columns">
+                    <div>
+                        <div class="computed-sensor-column-title"><i data-lucide="thermometer" style="width:14px;height:14px;"></i> Temperature</div>
+                        <div class="computed-sensors-grid" id="computed_sensors_grid_temp">
+                            <p class="modal-meta">Loading sensors...</p>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="computed-sensor-column-title"><i data-lucide="droplet" style="width:14px;height:14px;"></i> Humidity</div>
+                        <div class="computed-sensors-grid" id="computed_sensors_grid_humidity">
+                            <p class="modal-meta">Loading sensors...</p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1179,62 +1231,90 @@
             'sensor.heat_pump_pred_tomorrow_linear',
         ]);
 
-        // Update one of the RF/Linear card's inline prediction values
+        // Entity IDs routed into the "Temperature" / "Humidity" columns at the bottom of the page
+        const TEMPERATURE_SENSOR_ENTITY_IDS = new Set([
+            'sensor.heat_pump_pred_avg_temp_today_actual_and_forcast',
+            'sensor.heat_pump_pred_avg_temp_tomorrow_forecast',
+            'sensor.heat_pump_pred_avg_temp_48h',
+        ]);
+        const HUMIDITY_SENSOR_ENTITY_IDS = new Set([
+            'sensor.heat_pump_pred_avg_humidity_today_actual_and_forcast',
+            'sensor.heat_pump_pred_avg_humidity_tomorrow_forecast',
+        ]);
+
+        // Update one of the RF/Linear card's inline prediction values (plus its last-updated line)
         function updatePredictionSensorLink(sensor) {
+            const lastUpdate = sensor.last_update ? new Date(sensor.last_update).toLocaleString('en-GB') : 'never';
+
             const el = document.querySelector(`.prediction-sensor-link[data-entity-id="${sensor.entity_id}"]`);
-            if (!el) return;
+            if (el) {
+                const unit = sensor.unit_of_measurement || '';
+                el.innerText = sensor.available && sensor.state !== null && sensor.state !== undefined
+                    ? `${sensor.state}${unit ? ' ' + unit : ''}`
+                    : 'N/A';
+                el.title = `${sensor.friendly_name} — click to view history in Home Assistant`;
+                el.onclick = () => openSensorHistory(sensor.entity_id);
+            }
+
+            const updatedEl = document.querySelector(`.prediction-sensor-updated[data-entity-id="${sensor.entity_id}"]`);
+            if (updatedEl) {
+                updatedEl.innerText = `Updated: ${lastUpdate}`;
+            }
+        }
+
+        // Build a computed-sensor card element for the Temperature/Humidity columns
+        function buildComputedSensorCard(sensor) {
+            const card = document.createElement('div');
+            card.className = `computed-sensor-card${sensor.available ? '' : ' unavailable'}`;
+            card.title = `Open history for ${sensor.entity_id} in Home Assistant`;
+            card.onclick = () => openSensorHistory(sensor.entity_id);
 
             const unit = sensor.unit_of_measurement || '';
-            el.innerText = sensor.available && sensor.state !== null && sensor.state !== undefined
-                ? `${sensor.state}${unit ? ' ' + unit : ''}`
+            const valueText = sensor.available && sensor.state !== null && sensor.state !== undefined
+                ? sensor.state
                 : 'N/A';
-            el.title = `${sensor.friendly_name} — click to view history in Home Assistant`;
-            el.onclick = () => openSensorHistory(sensor.entity_id);
+            const lastUpdate = sensor.last_update ? new Date(sensor.last_update).toLocaleString('en-GB') : 'never';
+
+            card.innerHTML = `
+                <div class="computed-sensor-top">
+                    <span class="computed-sensor-name">${sensor.friendly_name}</span>
+                    <i data-lucide="external-link" class="computed-sensor-link-hint" style="width:16px;height:16px;"></i>
+                </div>
+                <div class="computed-sensor-value">${valueText}${unit ? `<span class="unit">${unit}</span>` : ''}</div>
+                <div class="computed-sensor-meta"><i data-lucide="clock" style="width:12px;height:12px;"></i> Updated: ${lastUpdate}</div>
+            `;
+            return card;
         }
 
         async function fetchComputedSensors() {
-            const grid = document.getElementById('computed_sensors_grid');
+            const tempGrid = document.getElementById('computed_sensors_grid_temp');
+            const humidityGrid = document.getElementById('computed_sensors_grid_humidity');
             try {
                 const res = await fetch('./computed_sensors');
                 const data = await res.json();
 
                 if (!res.ok || data.status !== 'success' || !data.sensors) {
-                    grid.innerHTML = '<p class="modal-meta">Unable to load computed sensors.</p>';
+                    tempGrid.innerHTML = '<p class="modal-meta">Unable to load computed sensors.</p>';
+                    humidityGrid.innerHTML = '';
                     return;
                 }
 
-                grid.innerHTML = '';
+                tempGrid.innerHTML = '';
+                humidityGrid.innerHTML = '';
                 data.sensors.forEach(sensor => {
                     if (PREDICTION_SENSOR_ENTITY_IDS.has(sensor.entity_id)) {
                         updatePredictionSensorLink(sensor);
-                        return;
+                    } else if (TEMPERATURE_SENSOR_ENTITY_IDS.has(sensor.entity_id)) {
+                        tempGrid.appendChild(buildComputedSensorCard(sensor));
+                    } else if (HUMIDITY_SENSOR_ENTITY_IDS.has(sensor.entity_id)) {
+                        humidityGrid.appendChild(buildComputedSensorCard(sensor));
                     }
-
-                    const card = document.createElement('div');
-                    card.className = `computed-sensor-card${sensor.available ? '' : ' unavailable'}`;
-                    card.title = `Open history for ${sensor.entity_id} in Home Assistant`;
-                    card.onclick = () => openSensorHistory(sensor.entity_id);
-
-                    const unit = sensor.unit_of_measurement || '';
-                    const valueText = sensor.available && sensor.state !== null && sensor.state !== undefined
-                        ? sensor.state
-                        : 'N/A';
-                    const lastUpdate = sensor.last_update ? new Date(sensor.last_update).toLocaleString('en-GB') : 'never';
-
-                    card.innerHTML = `
-                        <div class="computed-sensor-top">
-                            <span class="computed-sensor-name">${sensor.friendly_name}</span>
-                            <i data-lucide="external-link" class="computed-sensor-link-hint" style="width:16px;height:16px;"></i>
-                        </div>
-                        <div class="computed-sensor-value">${valueText}${unit ? `<span class="unit">${unit}</span>` : ''}</div>
-                        <div class="computed-sensor-meta"><i data-lucide="clock" style="width:12px;height:12px;"></i> Updated: ${lastUpdate}</div>
-                    `;
-                    grid.appendChild(card);
                 });
                 lucide.createIcons();
             } catch (error) {
                 console.error("Error fetching computed sensors:", error);
-                grid.innerHTML = '<p class="modal-meta">Error fetching computed sensors.</p>';
+                tempGrid.innerHTML = '<p class="modal-meta">Error fetching computed sensors.</p>';
+                humidityGrid.innerHTML = '';
             }
         }
 

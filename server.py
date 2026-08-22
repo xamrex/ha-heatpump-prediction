@@ -14,7 +14,7 @@ import json
 import csv
 import time
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
 try:
@@ -467,7 +467,13 @@ def _ha_headers():
     }
 
 def get_history_avg(entity_id, start_dt, end_dt, value_range):
-    """Average of an entity's numeric states between start_dt and end_dt via HA's History REST API."""
+    """Time-weighted average of an entity's numeric states between start_dt and end_dt via HA's History REST API.
+
+    A plain arithmetic mean over raw state-change samples is wrong here: state changes
+    land at irregular intervals, so a burst of readings crammed into a few seconds would
+    outweigh a value that was genuinely held for hours. Each sample is instead weighted
+    by how long it remained in effect within the window.
+    """
     ha_url = os.environ.get("HA_URL", "http://supervisor/core/api")
     start_iso = start_dt.astimezone().isoformat()
     end_iso = end_dt.astimezone().isoformat()
@@ -477,6 +483,7 @@ def get_history_avg(entity_id, start_dt, end_dt, value_range):
         "end_time": end_iso,
         "minimal_response": "",
         "no_attributes": "",
+        "significant_changes_only": "0",
     }
     response = requests.get(url, headers=_ha_headers(), params=params, timeout=15)
     response.raise_for_status()
@@ -485,7 +492,7 @@ def get_history_avg(entity_id, start_dt, end_dt, value_range):
         return None, 0, []
 
     low, high = value_range
-    values = []
+    samples = []
     for entry in data[0]:
         state_str = entry.get("state")
         if state_str in (None, "unknown", "unavailable", "none", ""):
@@ -494,12 +501,41 @@ def get_history_avg(entity_id, start_dt, end_dt, value_range):
             value = round(float(state_str), 1)
         except (TypeError, ValueError):
             continue
-        if low <= value <= high:
-            values.append(value)
+        if not (low <= value <= high):
+            continue
+        last_changed = entry.get("last_changed")
+        if not last_changed:
+            continue
+        try:
+            ts = datetime.fromisoformat(last_changed.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        samples.append((ts, value))
 
-    if not values:
+    if not samples:
         return None, 0, []
-    return round(sum(values) / len(values), 2), len(values), values
+
+    samples.sort(key=lambda pair: pair[0])
+    start_utc = start_dt.astimezone(timezone.utc)
+    end_utc = end_dt.astimezone(timezone.utc)
+
+    weighted_sum = 0.0
+    total_seconds = 0.0
+    values = []
+    for i, (ts, value) in enumerate(samples):
+        segment_start = max(ts, start_utc)
+        segment_end = samples[i + 1][0] if i + 1 < len(samples) else end_utc
+        segment_end = min(max(segment_end, segment_start), end_utc)
+        duration = (segment_end - segment_start).total_seconds()
+        values.append(value)
+        if duration <= 0:
+            continue
+        weighted_sum += value * duration
+        total_seconds += duration
+
+    if total_seconds <= 0:
+        return round(sum(values) / len(values), 2), len(values), values
+    return round(weighted_sum / total_seconds, 2), len(values), values
 
 
 def get_hourly_forecast(weather_entity):
@@ -540,11 +576,21 @@ def filter_forecast_range(forecast, start_dt, end_dt, field):
     return round(sum(values) / len(values), 2), len(values), values
 
 
-def weighted_combine(actual_avg, actual_n, forecast_avg, forecast_n):
-    """Count-weighted average of an 'actual' average and a 'forecast' average, matching mojskrypt.txt."""
+def weighted_combine(actual_avg, actual_weight, forecast_avg, forecast_weight):
+    """Weighted average of an 'actual' average and a 'forecast' average.
+
+    Both weights must be in the same unit (hours) for this to make sense: the actual
+    side is already a time-weighted average over the hours elapsed so far today, and
+    the forecast side is an average over N remaining forecast hours. Weighting by raw
+    sample counts instead (e.g. number of state changes) would be wrong, since a
+    frequently-changing sensor would then dominate a stable one that covers the same
+    span of real time.
+    """
     if actual_avg is not None and forecast_avg is not None:
-        total = actual_n + forecast_n
-        return round((actual_avg * actual_n + forecast_avg * forecast_n) / total, 1)
+        total = actual_weight + forecast_weight
+        if total <= 0:
+            return round((actual_avg + forecast_avg) / 2, 1)
+        return round((actual_avg * actual_weight + forecast_avg * forecast_weight) / total, 1)
     if actual_avg is not None:
         return actual_avg
     return forecast_avg
@@ -556,13 +602,14 @@ def update_temp_today(temp_sensor, weather_entity):
     today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
 
     actual_avg, actual_n, actual_values = get_history_avg(temp_sensor, midnight, now, (-50, 50))
+    actual_hours = (now - midnight).total_seconds() / 3600
     forecast = get_hourly_forecast(weather_entity)
     forecast_avg, forecast_n, forecast_values = filter_forecast_range(forecast, now, today_end, "temperature")
 
     if actual_avg is None and forecast_avg is None:
         raise RuntimeError("No actual or forecast temperature data available for today")
 
-    combined = weighted_combine(actual_avg, actual_n, forecast_avg, forecast_n)
+    combined = weighted_combine(actual_avg, actual_hours, forecast_avg, forecast_n)
 
     push_sensor_state(COMPUTED_SENSOR_IDS["temp_today"], combined, attributes={
         "unit_of_measurement": "°C",
@@ -574,6 +621,7 @@ def update_temp_today(temp_sensor, weather_entity):
         "actual_values": actual_values,
         "forecast_values": forecast_values,
         "actual_sample_count": actual_n,
+        "actual_hours": round(actual_hours, 2),
         "forecast_hour_count": forecast_n,
         "last_update": now.isoformat(),
         "source_sensor": temp_sensor,
@@ -610,13 +658,14 @@ def update_humidity_today(humidity_sensor, weather_entity):
     today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
 
     actual_avg, actual_n, actual_values = get_history_avg(humidity_sensor, midnight, now, (0, 100))
+    actual_hours = (now - midnight).total_seconds() / 3600
     forecast = get_hourly_forecast(weather_entity)
     forecast_avg, forecast_n, forecast_values = filter_forecast_range(forecast, now, today_end, "humidity")
 
     if actual_avg is None and forecast_avg is None:
         raise RuntimeError("No actual or forecast humidity data available for today")
 
-    combined = weighted_combine(actual_avg, actual_n, forecast_avg, forecast_n)
+    combined = weighted_combine(actual_avg, actual_hours, forecast_avg, forecast_n)
 
     push_sensor_state(COMPUTED_SENSOR_IDS["humidity_today"], combined, attributes={
         "unit_of_measurement": "%",
@@ -628,6 +677,7 @@ def update_humidity_today(humidity_sensor, weather_entity):
         "actual_values": actual_values,
         "forecast_values": forecast_values,
         "actual_sample_count": actual_n,
+        "actual_hours": round(actual_hours, 2),
         "forecast_hour_count": forecast_n,
         "last_update": now.isoformat(),
         "source_sensor": humidity_sensor,

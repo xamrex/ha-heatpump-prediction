@@ -1,0 +1,24 @@
+name: "Heat Pump prediction"
+version: "4.22"
+slug: "pompa_addon"
+description: "It predicts heat pump energy consumption. Go to website homeassistant.local:8234 for more information"
+arch:
+  - aarch64
+  - amd64
+map:
+  - config:rw
+ports:
+  8000/tcp: 8234
+panel_icon: mdi:pump
+panel_title: Pompa
+homeassistant_api: true
+options:
+  avg_temp_sensor: ""
+  avg_temp_48h_sensor: ""
+  avg_humidity_sensor: ""
+  energy_consumption_sensor: ""
+schema:
+  avg_temp_sensor: str?
+  avg_temp_48h_sensor: str?
+  avg_humidity_sensor: str?
+  energy_consumption_sensor: str?

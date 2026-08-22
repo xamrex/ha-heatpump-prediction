@@ -33,6 +33,11 @@ training_status = {
 
 status_lock = threading.Lock()
 
+RF_MAE_ENTITY_ID = "sensor.rf_mae"
+LR_MAE_ENTITY_ID = "sensor.lr_mae"
+RF_METADATA_FILE = "/config/pump/model_metadata_rf.json"
+LINEAR_METADATA_FILE = "/config/pump/model_metadata_linear.json"
+
 # =============================
 # Training functions
 # =============================
@@ -64,6 +69,7 @@ def run_training_rf():
     finally:
         with status_lock:
             training_status["rf"]["is_training"] = False
+        publish_mae_sensor(RF_MAE_ENTITY_ID, RF_METADATA_FILE, "RF Model Test MAE")
 
 
 def run_training_linear():
@@ -94,6 +100,7 @@ def run_training_linear():
     finally:
         with status_lock:
             training_status["linear"]["is_training"] = False
+        publish_mae_sensor(LR_MAE_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test MAE")
 
 # =============================
 # Endpoints - info
@@ -379,6 +386,43 @@ def get_sensor_state(entity_id):
     except Exception as e:
         raise RuntimeError(f"Error querying sensor {entity_id}: {e}")
 
+def push_sensor_state(entity_id, state, attributes=None):
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        token = os.environ.get("HA_TOKEN")
+        if not token:
+            raise ValueError("SUPERVISOR_TOKEN or HA_TOKEN environment variable not set")
+
+    ha_url = os.environ.get("HA_URL", "http://supervisor/core/api")
+    url = f"{ha_url}/states/{entity_id}"
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    payload = {"state": state}
+    if attributes:
+        payload["attributes"] = attributes
+
+    response = requests.post(url, headers=headers, json=payload, timeout=10)
+    response.raise_for_status()
+
+def publish_mae_sensor(entity_id, metadata_file, friendly_name):
+    if not os.path.exists(metadata_file):
+        return
+    try:
+        with open(metadata_file, "r") as f:
+            metadata = json.load(f)
+        mae = metadata.get("mae_test_kwh")
+        if mae is None:
+            return
+        push_sensor_state(entity_id, round(mae, 4), attributes={
+            "unit_of_measurement": "kWh",
+            "friendly_name": friendly_name,
+        })
+    except Exception as e:
+        print(f"Error publishing sensor {entity_id}: {e}")
+
 def fetch_all_sensors():
     sensors = get_sensor_names()
     missing = [k for k, v in sensors.items() if not v]
@@ -601,6 +645,10 @@ if __name__ == '__main__':
     print("="*70)
     print("FLASK SERVER - HEAT PUMP MODEL TRAINING")
     print("="*70)
+
+    # Publish HA sensors from any existing metadata so they're available right after a restart
+    publish_mae_sensor(RF_MAE_ENTITY_ID, RF_METADATA_FILE, "RF Model Test MAE")
+    publish_mae_sensor(LR_MAE_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test MAE")
 
     # Start the background thread for automatic logging
     t = threading.Thread(target=scheduler_thread)

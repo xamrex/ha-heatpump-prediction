@@ -1,0 +1,1220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heat Pump Model - Control Panel</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --bg-base: #0a0b10;
+            --bg-surface: rgba(20, 22, 33, 0.6);
+            --bg-card: rgba(30, 32, 48, 0.4);
+            --border-glow: rgba(255, 255, 255, 0.05);
+            --text-primary: #f3f4f6;
+            --text-secondary: #9ca3af;
+            --color-primary: #3b82f6; /* Blue */
+            --color-primary-glow: rgba(59, 130, 246, 0.15);
+            --color-accent-rf: #8b5cf6; /* Purple */
+            --color-accent-rf-glow: rgba(139, 92, 246, 0.2);
+            --color-accent-linear: #06b6d4; /* Cyan */
+            --color-accent-linear-glow: rgba(6, 182, 212, 0.2);
+            --color-success: #10b981; /* Green */
+            --color-success-glow: rgba(16, 185, 129, 0.2);
+            --color-warning: #f59e0b; /* Amber */
+            --color-error: #ef4444; /* Red */
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            background-image: 
+                radial-gradient(at 10% 20%, rgba(59, 130, 246, 0.08) 0px, transparent 50%),
+                radial-gradient(at 90% 80%, rgba(139, 92, 246, 0.08) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 2rem 1.5rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* HEADER */
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 2.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .header-title-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .header-logo {
+            background: linear-gradient(135deg, var(--color-primary), var(--color-accent-rf));
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
+            color: white;
+            animation: pulse-glow 3s infinite ease-in-out;
+        }
+
+        h1 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.8rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #ffffff, #d1d5db);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-subtitle {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+
+        /* STATUS PILLS */
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-glow);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-indicator.success { background-color: var(--color-success); box-shadow: 0 0 8px var(--color-success); }
+        .status-indicator.warning { background-color: var(--color-warning); box-shadow: 0 0 8px var(--color-warning); }
+        .status-indicator.error { background-color: var(--color-error); box-shadow: 0 0 8px var(--color-error); }
+        .status-indicator.idle { background-color: var(--text-secondary); }
+
+        /* GRID SYSTEM */
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--bg-surface);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-glow);
+            border-radius: 18px;
+            padding: 1.5rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-4px);
+            border-color: rgba(255, 255, 255, 0.12);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .col-4 { grid-column: span 4; }
+        .col-6 { grid-column: span 6; }
+        .col-8 { grid-column: span 8; }
+        .col-12 { grid-column: span 12; }
+
+        @media (max-width: 1024px) {
+            .col-4 { grid-column: span 6; }
+            .col-8 { grid-column: span 6; }
+        }
+
+        @media (max-width: 768px) {
+            .col-4, .col-6, .col-8, .col-12 { grid-column: span 12; }
+            header { flex-direction: column; align-items: flex-start; gap: 1rem; }
+        }
+
+        /* CARD ELEMENTS */
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.25rem;
+        }
+
+        .card-title-container {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .card-icon {
+            color: var(--color-primary);
+            display: flex;
+            align-items: center;
+        }
+
+        .card-icon.rf { color: var(--color-accent-rf); }
+        .card-icon.linear { color: var(--color-accent-linear); }
+        .card-icon.success { color: var(--color-success); }
+
+        h2 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* STATS TABLE / LIST */
+        .info-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.85rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .info-label {
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .info-value {
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        .info-value.metric {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 0.15rem 0.5rem;
+            border-radius: 6px;
+        }
+
+        /* SENSOR CHIPS */
+        .sensor-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            margin-top: 0.5rem;
+        }
+
+        .sensor-chip {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            padding: 0.25rem 0.6rem;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+        }
+
+        .sensor-chip.active {
+            color: var(--color-success);
+            background: rgba(16, 185, 129, 0.05);
+            border-color: rgba(16, 185, 129, 0.15);
+        }
+
+        /* BUTTONS */
+        .btn {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-rf {
+            background: var(--color-accent-rf-glow);
+            border-color: rgba(139, 92, 246, 0.3);
+            color: #c084fc;
+        }
+        .btn-rf:hover:not(:disabled) {
+            background: rgba(139, 92, 246, 0.3);
+            border-color: rgba(139, 92, 246, 0.5);
+            box-shadow: 0 0 12px rgba(139, 92, 246, 0.2);
+        }
+
+        .btn-linear {
+            background: var(--color-accent-linear-glow);
+            border-color: rgba(6, 182, 212, 0.3);
+            color: #22d3ee;
+        }
+        .btn-linear:hover:not(:disabled) {
+            background: rgba(6, 182, 212, 0.3);
+            border-color: rgba(6, 182, 212, 0.5);
+            box-shadow: 0 0 12px rgba(6, 182, 212, 0.2);
+        }
+
+        .btn-success {
+            background: var(--color-success-glow);
+            border-color: rgba(16, 185, 129, 0.3);
+            color: #34d399;
+        }
+        .btn-success:hover:not(:disabled) {
+            background: rgba(16, 185, 129, 0.3);
+            border-color: rgba(16, 185, 129, 0.5);
+            box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
+        }
+
+        /* CALCULATOR */
+        .calculator-layout {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .slider-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .slider-value {
+            font-family: 'Outfit', sans-serif;
+            font-weight: 700;
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.1);
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--color-primary);
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--color-primary);
+            transition: transform 0.1s ease;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .radio-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 0.25rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-glow);
+        }
+
+        .radio-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem;
+            padding: 0.5rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            font-weight: 500;
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+        }
+
+        .radio-group input {
+            display: none;
+        }
+
+        .radio-group input:checked + .radio-label {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-primary);
+            font-weight: 600;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        
+        .radio-group input#model_rf:checked + .radio-label {
+            border: 1px solid rgba(139, 92, 246, 0.3);
+            color: #c084fc;
+        }
+        .radio-group input#model_linear:checked + .radio-label {
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            color: #22d3ee;
+        }
+
+        /* CALC OUTPUT */
+        .calc-output {
+            background: linear-gradient(135deg, rgba(30, 32, 48, 0.8), rgba(15, 16, 24, 0.8));
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: 12px;
+            padding: 1rem;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.25rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .calc-output::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, transparent, var(--color-primary), transparent);
+        }
+
+        .calc-output-label {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-secondary);
+        }
+
+        .calc-output-value {
+            font-family: 'Outfit', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: var(--color-success);
+            text-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+            letter-spacing: -0.02em;
+        }
+
+        /* PLOTS CARD */
+        .plot-container {
+            width: 100%;
+            min-height: 250px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+            margin-top: 1rem;
+        }
+
+        .plot-image {
+            width: 100%;
+            height: auto;
+            max-height: 380px;
+            object-fit: contain;
+            display: block;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        .plot-image.loaded {
+            opacity: 1;
+        }
+
+        .plot-placeholder {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .plot-placeholder i {
+            font-size: 2.5rem;
+            opacity: 0.5;
+        }
+
+        .tabs-header {
+            display: flex;
+            gap: 0.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            padding-bottom: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.04);
+        }
+
+        .tab-btn.active {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.08);
+            font-weight: 600;
+        }
+
+        /* ANIMATIONS */
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 4px 15px rgba(59, 130, 246, 0.2); }
+            50% { box-shadow: 0 4px 25px rgba(59, 130, 246, 0.4); }
+        }
+
+        .spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* MODAL */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(6px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+        .modal-overlay.open { display: flex; }
+        .modal {
+            background: rgba(20, 22, 33, 0.97);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 20px;
+            padding: 2rem;
+            width: 100%;
+            max-width: 900px;
+            max-height: 80vh;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding-bottom: 0.75rem;
+        }
+        .modal-header h3 {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+        .modal-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 6px;
+            transition: color 0.2s;
+        }
+        .modal-close:hover { color: var(--text-primary); }
+        .modal-body {
+            overflow-y: auto;
+            flex: 1;
+        }
+        /* DATA TABLE */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+        .data-table th {
+            background: rgba(255,255,255,0.05);
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-align: left;
+            padding: 0.6rem 0.85rem;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            position: sticky;
+            top: 0;
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .data-table td {
+            padding: 0.55rem 0.85rem;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            color: var(--text-primary);
+        }
+        .data-table tr:hover td { background: rgba(255,255,255,0.03); }
+        .data-table td.num { font-family: 'Outfit', sans-serif; font-weight: 500; text-align: right; }
+        .modal-meta {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <div class="header-title-container">
+                <div class="header-logo">
+                    <i data-lucide="zap"></i>
+                </div>
+                <div>
+                    <h1>Energy Consumption Forecasting</h1>
+                    <div class="header-subtitle">Modeling heat pump power demand</div>
+                </div>
+            </div>
+            <div class="header-actions">
+                <div class="status-badge">
+                    <span class="status-indicator success" id="ha_connection_indicator"></span>
+                    <span id="ha_connection_text">Home Assistant: Connected</span>
+                </div>
+                <button id="btn_refresh" onclick="refreshStatus()" title="Refresh statuses" style="
+                    background: rgba(255,255,255,0.06);
+                    border: 1px solid rgba(255,255,255,0.1);
+                    border-radius: 10px;
+                    color: var(--text-secondary);
+                    width: 38px; height: 38px;
+                    display: flex; align-items: center; justify-content: center;
+                    cursor: pointer; transition: all 0.2s ease;">
+                    <i data-lucide="refresh-cw"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- DASHBOARD GRID -->
+        <div class="dashboard-grid">
+            <!-- MODEL 1: RANDOM FOREST -->
+            <div class="card col-4">
+                <div class="card-header">
+                    <div class="card-title-container">
+                        <div class="card-icon rf"><i data-lucide="cpu"></i></div>
+                        <h2>Random Forest (RF)</h2>
+                    </div>
+                    <span class="status-badge" id="rf_status_pill" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;">
+                        <span class="status-indicator idle" id="rf_indicator"></span>
+                        <span id="rf_status_text">Idle</span>
+                    </span>
+                </div>
+                <div class="info-list">
+                    <div class="info-item">
+                        <span class="info-label"><i data-lucide="calendar"></i> Last training</span>
+                        <span class="info-value" id="rf_last_trained">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label"><i data-lucide="trending-down"></i> Test error (MAE)</span>
+                        <span class="info-value metric" id="rf_mae">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label"><i data-lucide="percent"></i> Fit (R²)</span>
+                        <span class="info-value metric" id="rf_r2">-</span>
+                    </div>
+                </div>
+                <button class="btn btn-rf" id="btn_train_rf" onclick="trainModel('rf')">
+                    <i data-lucide="play"></i> Train RF model
+                </button>
+            </div>
+
+            <!-- MODEL 2: LINEAR REGRESSION -->
+            <div class="card col-4">
+                <div class="card-header">
+                    <div class="card-title-container">
+                        <div class="card-icon linear"><i data-lucide="activity"></i></div>
+                        <h2>Linear Regression</h2>
+                    </div>
+                    <span class="status-badge" id="linear_status_pill" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;">
+                        <span class="status-indicator idle" id="linear_indicator"></span>
+                        <span id="linear_status_text">Idle</span>
+                    </span>
+                </div>
+                <div class="info-list">
+                    <div class="info-item">
+                        <span class="info-label"><i data-lucide="calendar"></i> Last training</span>
+                        <span class="info-value" id="linear_last_trained">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label"><i data-lucide="trending-down"></i> Test error (MAE)</span>
+                        <span class="info-value metric" id="linear_mae">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label"><i data-lucide="percent"></i> Fit (R²)</span>
+                        <span class="info-value metric" id="linear_r2">-</span>
+                    </div>
+                </div>
+                <button class="btn btn-linear" id="btn_train_linear" onclick="trainModel('linear')">
+                    <i data-lucide="play"></i> Train Linear model
+                </button>
+            </div>
+
+            <!-- DATA COLLECTOR STATUS -->
+            <div class="card col-4">
+                <div class="card-header">
+                    <div class="card-title-container">
+                        <div class="card-icon success"><i data-lucide="database"></i></div>
+                        <h2>Data Logging</h2>
+                    </div>
+                </div>
+                <div class="info-list">
+                    <div class="info-item">
+                        <span class="info-label"><i data-lucide="calendar"></i> Last save</span>
+                        <span class="info-value" id="log_last_run">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label"><i data-lucide="clock"></i> Next save</span>
+                        <span class="info-value" id="log_next_run">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label"><i data-lucide="alert-circle"></i> Last status</span>
+                        <span class="info-value" id="log_status_val">-</span>
+                    </div>
+                </div>
+                <div style="margin-bottom: 1rem;">
+                    <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.3rem;">Sensors to log:</div>
+                    <div class="sensor-chips" id="sensor_chips_list">
+                        <div class="sensor-chip" id="chip_temp"><i data-lucide="thermometer"></i> Temp</div>
+                        <div class="sensor-chip" id="chip_temp48"><i data-lucide="clock-4"></i> Temp 48h</div>
+                        <div class="sensor-chip" id="chip_humidity"><i data-lucide="droplet"></i> Hum</div>
+                        <div class="sensor-chip" id="chip_energy"><i data-lucide="zap"></i> Usage</div>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                    <button class="btn btn-success" id="btn_log_now" onclick="logNow()">
+                        <i data-lucide="save"></i> Save now
+                    </button>
+                    <button class="btn" id="btn_browse_csv" onclick="openCsvModal()" style="border-color: rgba(99,102,241,0.3); color:#a5b4fc; background: rgba(99,102,241,0.08);">
+                        <i data-lucide="table"></i> Browse
+                    </button>
+                </div>
+            </div>
+
+            <!-- INTERACTIVE PREDICTION CALCULATOR -->
+            <div class="card col-4">
+                <div class="card-header">
+                    <div class="card-title-container">
+                        <div class="card-icon"><i data-lucide="calculator"></i></div>
+                        <h2>Prediction Calculator</h2>
+                    </div>
+                </div>
+                <div class="calculator-layout">
+                    <!-- Model Selector -->
+                    <div class="radio-group">
+                        <input type="radio" name="calc_model" id="model_rf" value="rf" checked>
+                        <label class="radio-label" for="model_rf"><i data-lucide="cpu"></i> Random Forest</label>
+
+                        <input type="radio" name="calc_model" id="model_linear" value="linear">
+                        <label class="radio-label" for="model_linear"><i data-lucide="activity"></i> Linear Regr.</label>
+                    </div>
+
+                    <!-- Temp Slider -->
+                    <div class="form-group">
+                        <div class="slider-header">
+                            <span>Average daily temperature</span>
+                            <span class="slider-value" id="val_temp">0°C</span>
+                        </div>
+                        <input type="range" id="input_temp" min="-20" max="25" value="0" step="0.5" oninput="updateSliderValue('temp', this.value)">
+                    </div>
+
+                    <!-- Temp 48h Slider -->
+                    <div class="form-group">
+                        <div class="slider-header">
+                            <span>Average temp over 48h</span>
+                            <span class="slider-value" id="val_temp48">0°C</span>
+                        </div>
+                        <input type="range" id="input_temp48" min="-20" max="25" value="0" step="0.5" oninput="updateSliderValue('temp48', this.value)">
+                    </div>
+
+                    <!-- Humidity Slider -->
+                    <div class="form-group">
+                        <div class="slider-header">
+                            <span>Average daily humidity</span>
+                            <span class="slider-value" id="val_humidity">80%</span>
+                        </div>
+                        <input type="range" id="input_humidity" min="20" max="100" value="80" step="1" oninput="updateSliderValue('humidity', this.value)">
+                    </div>
+
+                    <!-- Button -->
+                    <button class="btn btn-rf" id="btn_calculate" onclick="runPrediction()" style="margin-top: 0.5rem; background: var(--color-primary-glow); border-color: rgba(59, 130, 246, 0.3); color: #93c5fd;">
+                        <i data-lucide="calculator" id="btn_calc_icon"></i> Calculate
+                    </button>
+
+                    <!-- Output Box -->
+                    <div class="calc-output">
+                        <div class="calc-output-label">Predicted energy consumption</div>
+                        <div class="calc-output-value" id="prediction_result">- kWh</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- COMPARISON PLOTS -->
+            <div class="card col-8">
+                <div class="card-header" style="margin-bottom: 0.5rem;">
+                    <div class="card-title-container">
+                        <div class="card-icon"><i data-lucide="line-chart"></i></div>
+                        <h2>Result Charts (Actual vs Forecast)</h2>
+                    </div>
+                </div>
+                <div class="tabs-header">
+                    <button class="tab-btn active" id="tab_rf" onclick="switchTab('rf')">Random Forest</button>
+                    <button class="tab-btn" id="tab_linear" onclick="switchTab('linear')">Linear Regression</button>
+                </div>
+
+                <!-- RF Plot -->
+                <div id="plot_rf_container" class="plot-container">
+                    <img id="plot_rf_img" class="plot-image" alt="Random Forest Chart" src="" onload="this.classList.add('loaded')" onerror="handlePlotError('rf')">
+                    <div id="plot_rf_placeholder" class="plot-placeholder">
+                        <i data-lucide="image-off"></i>
+                        <p>No RF chart generated yet.<br><small>Run model training to generate the verification chart.</small></p>
+                    </div>
+                </div>
+
+                <!-- Linear Plot -->
+                <div id="plot_linear_container" class="plot-container" style="display: none;">
+                    <img id="plot_linear_img" class="plot-image" alt="Linear Regression Chart" src="" onload="this.classList.add('loaded')" onerror="handlePlotError('linear')">
+                    <div id="plot_linear_placeholder" class="plot-placeholder">
+                        <i data-lucide="image-off"></i>
+                        <p>No Linear Regression chart generated yet.<br><small>Run model training to generate the verification chart.</small></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CSV DATA MODAL -->
+    <div class="modal-overlay" id="csv_modal_overlay" onclick="if(event.target===this) closeCsvModal()">
+        <div class="modal">
+            <div class="modal-header">
+                <h3><i data-lucide="table"></i> CSV Data — measurement history</h3>
+                <button class="modal-close" onclick="closeCsvModal()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body" id="csv_modal_body">
+                <p class="modal-meta">Loading data...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPTS -->
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        // Application state
+        let activeTab = 'rf';
+
+        // Fetch data once on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchStatus();
+            fetchLogStatus();
+            loadPlots();
+        });
+
+        // Manual status refresh
+        async function refreshStatus() {
+            const btn = document.getElementById('btn_refresh');
+            btn.disabled = true;
+            btn.innerHTML = '<i data-lucide="loader-2" class="spinner"></i>';
+            lucide.createIcons();
+            try {
+                await Promise.all([fetchStatus(), fetchLogStatus()]);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i data-lucide="refresh-cw"></i>';
+                lucide.createIcons();
+            }
+        }
+
+        // Calculator sliders
+        function updateSliderValue(sliderId, val) {
+            const displayVal = document.getElementById(`val_${sliderId}`);
+            if (sliderId === 'humidity') {
+                displayVal.innerText = `${val}%`;
+            } else {
+                displayVal.innerText = `${val}°C`;
+            }
+        }
+
+        // Fetch model statuses (RF and Linear)
+        async function fetchStatus() {
+            try {
+                // RF Status
+                const resRf = await fetch('./status');
+                if (resRf.ok) {
+                    const data = await resRf.json();
+                    updateModelUI('rf', data);
+                }
+
+                // Linear Status
+                const resLinear = await fetch('./statuslinear');
+                if (resLinear.ok) {
+                    const data = await resLinear.json();
+                    updateModelUI('linear', data);
+                }
+
+                document.getElementById('ha_connection_indicator').className = "status-indicator success";
+                document.getElementById('ha_connection_text').innerText = "Home Assistant: Connected";
+            } catch (error) {
+                console.error("Error fetching statuses:", error);
+                document.getElementById('ha_connection_indicator').className = "status-indicator error";
+                document.getElementById('ha_connection_text').innerText = "Server connection error";
+            }
+        }
+
+        // Update model card UI
+        function updateModelUI(modelType, data) {
+            const trainBtn = document.getElementById(`btn_train_${modelType}`);
+            const statusText = document.getElementById(`${modelType}_status_text`);
+            const indicator = document.getElementById(`${modelType}_indicator`);
+            const lastTrained = document.getElementById(`${modelType}_last_trained`);
+            const mae = document.getElementById(`${modelType}_mae`);
+            const r2 = document.getElementById(`${modelType}_r2`);
+            const label = modelType === 'rf' ? 'Train RF model' : 'Train Linear model';
+
+            if (data.is_training) {
+                trainBtn.disabled = true;
+                trainBtn.innerHTML = `<span class="spinner" style="display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;"></span> Training...`;
+                statusText.innerText = "Training...";
+                indicator.className = "status-indicator warning";
+            } else {
+                trainBtn.disabled = false;
+                trainBtn.innerHTML = `<i data-lucide="play"></i> ${label}`;
+
+                if (data.last_result === "SUCCESS") {
+                    statusText.innerText = "Ready";
+                    indicator.className = "status-indicator success";
+                } else if (data.last_result === "FAILED" || data.last_result === "ERROR") {
+                    statusText.innerText = "Error";
+                    indicator.className = "status-indicator error";
+                } else {
+                    statusText.innerText = "Idle";
+                    indicator.className = "status-indicator idle";
+                }
+                lucide.createIcons();
+            }
+
+            // Metrics and timestamps
+            if (data.last_model_trained) {
+                const date = new Date(data.last_model_trained);
+                lastTrained.innerText = date.toLocaleString('en-GB');
+            } else {
+                lastTrained.innerText = "None";
+            }
+
+            if (data.model_metrics) {
+                mae.innerText = `${data.model_metrics.mae_test_kwh} kWh`;
+                r2.innerText = `${data.model_metrics.r2_test}`;
+            } else {
+                mae.innerText = "-";
+                r2.innerText = "-";
+            }
+        }
+
+        // Fetch data logging status
+        async function fetchLogStatus() {
+            try {
+                const res = await fetch('./log_status');
+                if (res.ok) {
+                    const data = await res.json();
+
+                    document.getElementById('log_last_run').innerText = data.last_run ? data.last_run : "None";
+                    document.getElementById('log_next_run').innerText = data.next_run ? data.next_run : "Not scheduled";
+
+                    const statusVal = document.getElementById('log_status_val');
+                    statusVal.innerText = data.last_status;
+                    if (data.last_status.includes("SUCCESS")) {
+                        statusVal.style.color = "var(--color-success)";
+                    } else if (data.last_status.includes("ERROR")) {
+                        statusVal.style.color = "var(--color-error)";
+                    } else {
+                        statusVal.style.color = "var(--text-primary)";
+                    }
+
+                    // Sensor chips
+                    updateSensorChips(data.configured_sensors);
+                }
+            } catch (error) {
+                console.error("Error fetching logger status:", error);
+            }
+        }
+
+        // Update sensor chip status
+        function updateSensorChips(sensors) {
+            const chips = {
+                avg_temp: document.getElementById('chip_temp'),
+                avg_temp_48h: document.getElementById('chip_temp48'),
+                avg_humidity: document.getElementById('chip_humidity'),
+                energy_consumption: document.getElementById('chip_energy')
+            };
+
+            for (const [key, chip] of Object.entries(chips)) {
+                if (sensors[key]) {
+                    chip.className = "sensor-chip active";
+                    chip.title = `Entity: ${sensors[key]}`;
+                } else {
+                    chip.className = "sensor-chip";
+                    chip.title = "Sensor not configured";
+                }
+            }
+        }
+
+        // Trigger manual model training
+        async function trainModel(modelType) {
+            try {
+                const url = modelType === 'rf' ? './train' : './trainlinear';
+                const res = await fetch(url, { method: 'POST' });
+                if (res.ok) {
+                    alert(`Started training the ${modelType.toUpperCase()} model! Training may take a few minutes.`);
+                    fetchStatus();
+                } else {
+                    const err = await res.json();
+                    alert(`Error: ${err.message}`);
+                }
+            } catch (error) {
+                alert(`Failed to send training request: ${error}`);
+            }
+        }
+
+        // Manually log data now
+        async function logNow() {
+            const btn = document.getElementById('btn_log_now');
+            btn.disabled = true;
+            try {
+                const res = await fetch('./log_now', { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(`Data logged successfully! (${data.message})\nSaved: Temp=${data.data.avg_temp}°C, Usage=${data.data.energy_consumption} kWh.`);
+                    fetchLogStatus();
+                } else {
+                    alert(`Error logging data: ${data.message}`);
+                }
+            } catch (error) {
+                alert(`Failed to connect to the logging API: ${error}`);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // Run prediction when Calculate button is clicked
+        async function runPrediction() {
+            const temp = document.getElementById('input_temp').value;
+            const temp48 = document.getElementById('input_temp48').value;
+            const humidity = document.getElementById('input_humidity').value;
+            const modelType = document.querySelector('input[name="calc_model"]:checked').value;
+ 
+            const output = document.getElementById('prediction_result');
+            const btn = document.getElementById('btn_calculate');
+
+            // Show loading state on button
+            btn.disabled = true;
+            btn.dataset.originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="spinner" style="display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;"></span> Calculating...';
+
+            try {
+                const apiPath = modelType === 'rf' ? './prediction' : './predictionlinear';
+                const url = `${apiPath}?avg_temp=${temp}&avg_temp_48h=${temp48}&avg_humidity=${humidity}`;
+
+                const res = await fetch(url);
+                const data = await res.json();
+
+                if (res.ok && data.status === 'success') {
+                    output.innerText = `${data.prediction.energy_kwh} kWh`;
+                    output.style.color = "var(--color-success)";
+                } else {
+                    output.innerText = "No model";
+                    output.style.color = "var(--color-error)";
+                    alert("Unable to calculate prediction. The model probably hasn't been trained yet. Run model training in the panel above.");
+                }
+            } catch (error) {
+                console.error("Prediction error:", error);
+                output.innerText = "Error";
+                output.style.color = "var(--color-error)";
+                alert("An error occurred while communicating with the prediction API.");
+            } finally {
+                // Restore original button text
+                btn.disabled = false;
+                btn.innerHTML = btn.dataset.originalText;
+                lucide.createIcons();
+            }
+        }
+
+        // Handle chart tabs
+        function switchTab(tabId) {
+            activeTab = tabId;
+            
+            document.getElementById('tab_rf').classList.toggle('active', tabId === 'rf');
+            document.getElementById('tab_linear').classList.toggle('active', tabId === 'linear');
+
+            document.getElementById('plot_rf_container').style.display = tabId === 'rf' ? 'flex' : 'none';
+            document.getElementById('plot_linear_container').style.display = tabId === 'linear' ? 'flex' : 'none';
+
+            loadPlots();
+        }
+
+        // Load and refresh chart images
+        function loadPlots() {
+            const timestamp = new Date().getTime(); // Prevents browser caching
+
+            // RF Plot
+            const rfImg = document.getElementById('plot_rf_img');
+            const rfPlaceholder = document.getElementById('plot_rf_placeholder');
+            rfImg.src = `./showpicresults?show_plot=1&t=${timestamp}`;
+            rfImg.style.display = 'block';
+            rfPlaceholder.style.display = 'none';
+
+            // Linear Plot
+            const linearImg = document.getElementById('plot_linear_img');
+            const linearPlaceholder = document.getElementById('plot_linear_placeholder');
+            linearImg.src = `./showpicresultslinear?show_plot=1&t=${timestamp}`;
+            linearImg.style.display = 'block';
+            linearPlaceholder.style.display = 'none';
+        }
+
+        // Handle chart load errors (e.g. when the file doesn't exist)
+        function handlePlotError(modelType) {
+            const img = document.getElementById(`plot_${modelType}_img`);
+            const placeholder = document.getElementById(`plot_${modelType}_placeholder`);
+
+            img.style.display = 'none';
+            img.classList.remove('loaded');
+            placeholder.style.display = 'flex';
+        }
+
+        // Open the CSV data preview modal
+        async function openCsvModal() {
+            const overlay = document.getElementById('csv_modal_overlay');
+            const body = document.getElementById('csv_modal_body');
+            overlay.classList.add('open');
+            body.innerHTML = '<p class="modal-meta">Loading data...</p>';
+
+            try {
+                const res = await fetch('./csv_data');
+                const data = await res.json();
+
+                if (!res.ok || data.status !== 'success' || !data.rows || data.rows.length === 0) {
+                    body.innerHTML = `<p class="modal-meta">${data.message || 'No data to display.'}</p>`;
+                    return;
+                }
+
+                const columns = data.columns || Object.keys(data.rows[0]);
+                let html = '<table class="data-table"><thead><tr>';
+                columns.forEach(col => { html += `<th>${col}</th>`; });
+                html += '</tr></thead><tbody>';
+
+                data.rows.forEach(row => {
+                    html += '<tr>';
+                    columns.forEach(col => {
+                        const isNumeric = col !== 'date';
+                        html += `<td class="${isNumeric ? 'num' : ''}">${row[col]}</td>`;
+                    });
+                    html += '</tr>';
+                });
+                html += '</tbody></table>';
+
+                body.innerHTML = html;
+                body.insertAdjacentHTML('beforeend', `<div class="modal-meta">Row count: ${data.rows.length}</div>`);
+            } catch (error) {
+                body.innerHTML = `<p class="modal-meta">Error fetching data: ${error}</p>`;
+            }
+        }
+
+        // Close the CSV data preview modal
+        function closeCsvModal() {
+            document.getElementById('csv_modal_overlay').classList.remove('open');
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeCsvModal();
+        });
+    </script>
+</body>
+</html>

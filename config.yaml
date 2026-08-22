@@ -1,5 +1,5 @@
 name: "Heat Pump prediction"
-version: "4.22"
+version: "4.23"
 slug: "pompa_addon"
 description: "It predicts heat pump energy consumption. Go to website homeassistant.local:8234 for more information"
 arch:
@@ -11,6 +11,8 @@ ports:
   8000/tcp: 8234
 panel_icon: mdi:pump
 panel_title: Pompa
+ingress: true
+ingress_port: 8000
 homeassistant_api: true
 options:
   avg_temp_sensor: ""

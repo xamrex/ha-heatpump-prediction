@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Flask server dla addona trenowania modelu pompy ciepła.
-Obsługuje modele nieliniowy (Random Forest) i liniowy (Linear Regression)
+Flask server for the heat pump model training add-on.
+Handles the non-linear (Random Forest) and linear (Linear Regression) models.
 """
 
-from flask import Flask, jsonify, send_file, request
+from flask import Flask, jsonify, send_file, request, Response
 import subprocess
 import threading
 import os
@@ -34,7 +34,7 @@ training_status = {
 status_lock = threading.Lock()
 
 # =============================
-# Funkcje trenowania
+# Training functions
 # =============================
 def run_training_rf():
     with status_lock:
@@ -100,32 +100,27 @@ def run_training_linear():
 # =============================
 @app.route('/', endpoint='home')
 def home_view():
-    return jsonify({
-        "name": "Heat Pump Training API",
-        "version": "1.3",
-        "Instruction": "Copy or automatically collect daily_temps.csv, Run train, and you can use prediction.",
-        "endpoints": {
-            "/train": "Start model RF training (POST/GET)",
-            "/trainlinear": "Start linear model training (POST/GET)",
-            "/status": "RF training status",
-            "/statuslinear": "Linear training status",
-            "/prediction?avg_temp=5&avg_temp_48h=3&avg_humidity=75": "Get RF energy prediction",
-            "/predictionlinear?avg_temp=5&avg_temp_48h=3&avg_humidity=75": "Linear energy prediction",
-            "/showpicresults?show_plot=1": "Run RF check script",
-            "/showpicresultslinear?show_plot=0": "Run linear check script",
-            "/log_now": "Force-log current sensor values to CSV immediately",
-            "/log_status": "Get automatic logging daemon status"
-        }
-    })
+    html_path = "index.html"
+    if not os.path.exists(html_path):
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        html_path = os.path.join(script_dir, "index.html")
+        
+    if os.path.exists(html_path):
+        return send_file(html_path)
+    else:
+        return jsonify({
+            "status": "error",
+            "message": "Dashboard HTML file index.html not found!"
+        }), 404
 
 # =============================
-# Endpoints - trenowanie
+# Endpoints - training
 # =============================
 @app.route('/train', methods=['POST', 'GET'])
 def train_rf_view():
     with status_lock:
         if training_status["rf"]["is_training"]:
-            return jsonify({"status": "error", "message": "RF już się trenuje!"}), 409
+            return jsonify({"status": "error", "message": "RF is already training!"}), 409
 
     thread = threading.Thread(target=run_training_rf)
     thread.daemon = True
@@ -138,7 +133,7 @@ def train_rf_view():
 def train_linear_view():
     with status_lock:
         if training_status["linear"]["is_training"]:
-            return jsonify({"status": "error", "message": "Linear już się trenuje!"}), 409
+            return jsonify({"status": "error", "message": "Linear is already training!"}), 409
 
     thread = threading.Thread(target=run_training_linear)
     thread.daemon = True
@@ -152,7 +147,7 @@ def train_linear_view():
 # =============================
 @app.route('/status')
 def status_rf_view():
-    # bezpieczna kopia statusu (thread-safe)
+    # safe copy of the status (thread-safe)
     with status_lock:
         response = training_status["rf"].copy()
 
@@ -181,7 +176,7 @@ def status_rf_view():
 
 @app.route('/statuslinear')
 def status_linear_view():
-    # bezpieczna kopia statusu (thread-safe)
+    # safe copy of the status (thread-safe)
     with status_lock:
         response = training_status["linear"].copy()
 
@@ -209,11 +204,11 @@ def status_linear_view():
 
 
 # =============================
-# Funkcja predykcji
+# Prediction function
 # =============================
 def predict_energy(model_path, avg_temp, avg_temp_48h, avg_humidity):
     if not os.path.exists(model_path):
-        return {"status": "error", "message": f"Brak pliku modelu: {model_path}"}, 404
+        return {"status": "error", "message": f"Model file not found: {model_path}"}, 404
     model = joblib.load(model_path)
     heating_degree = max(0, 18 - avg_temp)
     features = pd.DataFrame([[avg_temp, avg_temp_48h, heating_degree, avg_humidity]],
@@ -227,7 +222,7 @@ def predict_energy(model_path, avg_temp, avg_temp_48h, avg_humidity):
     }, 200
 
 # =============================
-# Endpoints - predykcje
+# Endpoints - predictions
 # =============================
 @app.route('/prediction', endpoint='predict_rf')
 def prediction_rf_view():
@@ -236,7 +231,7 @@ def prediction_rf_view():
         avg_temp_48h = float(request.args.get("avg_temp_48h", -1))
         avg_humidity = float(request.args.get("avg_humidity", 80))
     except ValueError:
-        return {"status": "error", "message": "Niepoprawny format parametrów"}, 400
+        return {"status": "error", "message": "Invalid parameter format"}, 400
     return predict_energy("/config/pump/heatpump_model_rf.pkl", avg_temp, avg_temp_48h, avg_humidity)
 
 @app.route('/predictionlinear', endpoint='predict_linear')
@@ -246,15 +241,15 @@ def prediction_linear_view():
         avg_temp_48h = float(request.args.get("avg_temp_48h", -1))
         avg_humidity = float(request.args.get("avg_humidity", 80))
     except ValueError:
-        return {"status": "error", "message": "Niepoprawny format parametrów"}, 400
+        return {"status": "error", "message": "Invalid parameter format"}, 400
     return predict_energy("/config/pump/heatpump_model_linear.pkl", avg_temp, avg_temp_48h, avg_humidity)
 
 # =============================
-# Endpoints - weryfikacja (wykres)
+# Endpoints - verification (chart)
 # =============================
 def run_check_model(script_path, plot_path, metrics_file):
     """
-    Uruchamia skrypt checkModel (linear lub RF) i zwraca albo wykres, albo JSON z metrykami.
+    Runs the checkModel script (linear or RF) and returns either the chart or a JSON with metrics.
     """
     show_plot = request.args.get("show_plot", "0") == "1"
     env = os.environ.copy()
@@ -282,7 +277,7 @@ def run_check_model(script_path, plot_path, metrics_file):
             else:
                 return jsonify({
                     "status": "error",
-                    "message": f"Wykres nie znaleziony: {plot_path}"
+                    "message": f"Chart not found: {plot_path}"
                 }), 404
         else:
             if os.path.exists(metrics_file):
@@ -292,7 +287,7 @@ def run_check_model(script_path, plot_path, metrics_file):
             else:
                 return jsonify({
                     "status": "error",
-                    "message": f"Plik z metrykami nie istnieje: {metrics_file}"
+                    "message": f"Metrics file does not exist: {metrics_file}"
                 }), 404
 
     except Exception as e:
@@ -315,7 +310,7 @@ def show_results_linear_view():
     )
 
 # =============================
-# Automatyczne logowanie danych
+# Automatic data logging
 # =============================
 OPTIONS_FILE = "/data/options.json"
 FALLBACK_OPTIONS_FILE = "/config/heatpumptrain/options.json"
@@ -388,14 +383,14 @@ def fetch_all_sensors():
     sensors = get_sensor_names()
     missing = [k for k, v in sensors.items() if not v]
     if missing:
-        raise ValueError(f"Brak skonfigurowanych sensorów dla: {', '.join(missing)}")
-        
+        raise ValueError(f"No sensors configured for: {', '.join(missing)}")
+
     results = {}
     for name, entity_id in sensors.items():
         try:
             results[name] = get_sensor_state(entity_id)
         except Exception as e:
-            raise RuntimeError(f"Błąd pobierania sensora '{name}' ({entity_id}): {e}")
+            raise RuntimeError(f"Error fetching sensor '{name}' ({entity_id}): {e}")
     return results
 
 def log_daily_data(date_str=None):
@@ -449,7 +444,7 @@ def log_daily_data(date_str=None):
     return row_data, "updated" if updated else "appended"
 
 def scheduler_thread():
-    print("Uruchamianie wątku tła dla codziennego logowania...")
+    print("Starting background thread for daily logging...")
     while True:
         try:
             now = datetime.now()
@@ -469,20 +464,20 @@ def scheduler_thread():
             if now.hour == 23 and now.minute == 59 and last_run != today_str:
                 sensors = get_sensor_names()
                 if any(sensors.values()):
-                    print(f"Rozpoczęcie automatycznego dobowego logowania danych o {now}...")
+                    print(f"Starting automatic daily data logging at {now}...")
                     row_data, action = log_daily_data(today_str)
-                    
+
                     with logging_lock:
                         logging_status["last_run"] = today_str
                         logging_status["last_status"] = f"SUCCESS ({action})"
                         logging_status["last_error"] = None
-                    print(f"Automatyczne logowanie zakończone sukcesem: {row_data} ({action})")
+                    print(f"Automatic logging completed successfully: {row_data} ({action})")
                 else:
                     with logging_lock:
                         logging_status["last_status"] = "Skipped (no sensors configured)"
-                    
+
         except Exception as e:
-            print(f"Błąd w wątku schedulera: {e}")
+            print(f"Error in scheduler thread: {e}")
             with logging_lock:
                 logging_status["last_status"] = "ERROR"
                 logging_status["last_error"] = str(e)
@@ -508,19 +503,106 @@ def log_now_view():
 def log_status_view():
     with logging_lock:
         status_copy = logging_status.copy()
-    
+
     status_copy["configured_sensors"] = get_sensor_names()
     return jsonify(status_copy), 200
 
+
+CSV_COLUMNS = ["date", "avg_temp", "avg_temp_48h", "avg_humidity", "energy_consumption"]
+
+@app.route('/csv_data', methods=['GET'])
+def csv_data_view():
+    if not os.path.exists(CSV_FILE):
+        return jsonify({"status": "error", "message": "CSV data file not found", "rows": []}), 404
+
+    try:
+        with open(CSV_FILE, mode='r', newline='', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            rows = [{col: row.get(col, "") for col in CSV_COLUMNS} for row in reader]
+
+        # jsonify sorts keys alphabetically, so we build the JSON manually
+        # to preserve the requested column order
+        payload = json.dumps({"status": "success", "columns": CSV_COLUMNS, "rows": rows}, ensure_ascii=False)
+        return Response(payload, mimetype='application/json'), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # =============================
-# Uruchomienie serwera
+# Endpoint - list of available endpoints
+# =============================
+ENDPOINT_INFO = {
+    'home': {
+        "description": "Control panel (dashboard HTML)",
+    },
+    'train_rf_view': {
+        "description": "Starts Random Forest model training in the background",
+    },
+    'train_linear_view': {
+        "description": "Starts Linear Regression model training in the background",
+    },
+    'status_rf_view': {
+        "description": "RF model training status and metrics",
+    },
+    'status_linear_view': {
+        "description": "Linear model training status and metrics",
+    },
+    'predict_rf': {
+        "description": "Energy consumption prediction using the RF model (parameters: avg_temp, avg_temp_48h, avg_humidity)",
+        "usage": "/prediction?avg_temp=16.5&avg_temp_48h=15.12&avg_humidity=12",
+    },
+    'predict_linear': {
+        "description": "Energy consumption prediction using the Linear model (parameters: avg_temp, avg_temp_48h, avg_humidity)",
+        "usage": "/predictionlinear?avg_temp=16.5&avg_temp_48h=15.12&avg_humidity=12",
+    },
+    'show_rf': {
+        "description": "RF model verification chart or metrics (parameter: show_plot=1 for the PNG chart)",
+        "usage": "/showpicresults?show_plot=1",
+    },
+    'show_linear': {
+        "description": "Linear model verification chart or metrics (parameter: show_plot=1 for the PNG chart)",
+        "usage": "/showpicresultslinear?show_plot=1",
+    },
+    'log_now_view': {
+        "description": "Manually logs the current sensor readings to CSV",
+    },
+    'log_status_view': {
+        "description": "Status of automatic daily data logging",
+    },
+    'csv_data_view': {
+        "description": "Returns data from daily_temps.csv as JSON (columns: date, avg_temp, avg_temp_48h, avg_humidity, energy_consumption)",
+    },
+    'list_endpoints_view': {
+        "description": "List of all available endpoints with descriptions",
+    },
+}
+
+@app.route('/list', methods=['GET'])
+def list_endpoints_view():
+    endpoints = []
+    for rule in app.url_map.iter_rules():
+        if rule.endpoint == 'static':
+            continue
+        methods = sorted(m for m in rule.methods if m not in ('HEAD', 'OPTIONS'))
+        info = ENDPOINT_INFO.get(rule.endpoint, {})
+        endpoints.append({
+            "path": str(rule),
+            "methods": methods,
+            "description": info.get("description", ""),
+            "usage": info.get("usage", "")
+        })
+    endpoints.sort(key=lambda e: e["path"])
+    return jsonify({"status": "success", "endpoints": endpoints}), 200
+
+# =============================
+# Server startup
 # =============================
 if __name__ == '__main__':
     print("="*70)
-    print("SERWER FLASK - TRENOWANIE MODELU POMPY CIEPŁA")
+    print("FLASK SERVER - HEAT PUMP MODEL TRAINING")
     print("="*70)
-    
-    # Uruchomienie wątku tła do automatycznego logowania
+
+    # Start the background thread for automatic logging
     t = threading.Thread(target=scheduler_thread)
     t.daemon = True
     t.start()

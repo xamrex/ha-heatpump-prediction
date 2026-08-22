@@ -10,6 +10,7 @@ COPY train_model_linear.py /app
 COPY server.py /app
 COPY checkModel.py /app
 COPY checkModel_linear.py /app
+COPY index.html /app
 
 # Instalacja bibliotek Pythona
 RUN pip install --no-cache-dir numpy pandas requests joblib scikit-learn flask matplotlib

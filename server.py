@@ -15,6 +15,12 @@ import csv
 import time
 import requests
 from datetime import datetime, timedelta
+from urllib.parse import quote
+
+try:
+    import websocket  # websocket-client
+except ImportError:
+    websocket = None
 
 app = Flask(__name__)
 
@@ -349,9 +355,9 @@ def get_addon_options():
 def get_sensor_names():
     opts = get_addon_options()
     return {
-        "avg_temp": opts.get("avg_temp_sensor", ""),
-        "avg_temp_48h": opts.get("avg_temp_48h_sensor", ""),
-        "avg_humidity": opts.get("avg_humidity_sensor", ""),
+        "avg_temp": COMPUTED_SENSOR_IDS["temp_today"],
+        "avg_temp_48h": COMPUTED_SENSOR_IDS["avg_temp_48h"],
+        "avg_humidity": COMPUTED_SENSOR_IDS["humidity_today"],
         "energy_consumption": opts.get("energy_consumption_sensor", "")
     }
 
@@ -385,6 +391,23 @@ def get_sensor_state(entity_id):
         return float(state_str)
     except Exception as e:
         raise RuntimeError(f"Error querying sensor {entity_id}: {e}")
+
+def get_full_sensor_state(entity_id):
+    token = os.environ.get("SUPERVISOR_TOKEN") or os.environ.get("HA_TOKEN")
+    if not token:
+        raise ValueError("SUPERVISOR_TOKEN or HA_TOKEN environment variable not set")
+
+    ha_url = os.environ.get("HA_URL", "http://supervisor/core/api")
+    url = f"{ha_url}/states/{entity_id}"
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+
+    response = requests.get(url, headers=headers, timeout=10)
+    response.raise_for_status()
+    return response.json()
 
 def push_sensor_state(entity_id, state, attributes=None):
     token = os.environ.get("SUPERVISOR_TOKEN")
@@ -422,6 +445,440 @@ def publish_mae_sensor(entity_id, metadata_file, friendly_name):
         })
     except Exception as e:
         print(f"Error publishing sensor {entity_id}: {e}")
+
+# =============================
+# Weather / temperature computed sensors
+# =============================
+COMPUTED_SENSOR_IDS = {
+    "temp_today": "sensor.heat_pump_pred_avg_temp_today_actual_and_forcast",
+    "temp_tomorrow": "sensor.heat_pump_pred_avg_temp_tomorrow_forecast",
+    "humidity_today": "sensor.heat_pump_pred_avg_humidity_today_actual_and_forcast",
+    "humidity_tomorrow": "sensor.heat_pump_pred_avg_humidity_tomorrow_forecast",
+    "avg_temp_48h": "sensor.heat_pump_pred_avg_temp_48h",
+}
+
+def _ha_headers():
+    token = os.environ.get("SUPERVISOR_TOKEN") or os.environ.get("HA_TOKEN")
+    if not token:
+        raise ValueError("SUPERVISOR_TOKEN or HA_TOKEN environment variable not set")
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+
+def get_history_avg(entity_id, start_dt, end_dt, value_range):
+    """Average of an entity's numeric states between start_dt and end_dt via HA's History REST API."""
+    ha_url = os.environ.get("HA_URL", "http://supervisor/core/api")
+    start_iso = start_dt.astimezone().isoformat()
+    end_iso = end_dt.astimezone().isoformat()
+    url = f"{ha_url}/history/period/{quote(start_iso, safe='')}"
+    params = {
+        "filter_entity_id": entity_id,
+        "end_time": end_iso,
+        "minimal_response": "",
+        "no_attributes": "",
+    }
+    response = requests.get(url, headers=_ha_headers(), params=params, timeout=15)
+    response.raise_for_status()
+    data = response.json()
+    if not data or not data[0]:
+        return None, 0, []
+
+    low, high = value_range
+    values = []
+    for entry in data[0]:
+        state_str = entry.get("state")
+        if state_str in (None, "unknown", "unavailable", "none", ""):
+            continue
+        try:
+            value = round(float(state_str), 1)
+        except (TypeError, ValueError):
+            continue
+        if low <= value <= high:
+            values.append(value)
+
+    if not values:
+        return None, 0, []
+    return round(sum(values) / len(values), 2), len(values), values
+
+
+def get_hourly_forecast(weather_entity):
+    """Hourly forecast list for a weather entity via the weather.get_forecasts service call."""
+    ha_url = os.environ.get("HA_URL", "http://supervisor/core/api")
+    url = f"{ha_url}/services/weather/get_forecasts"
+    payload = {"entity_id": weather_entity, "type": "hourly"}
+    response = requests.post(
+        url, headers=_ha_headers(), params={"return_response": ""}, json=payload, timeout=15
+    )
+    response.raise_for_status()
+    data = response.json()
+    service_response = data.get("service_response", {}) if isinstance(data, dict) else {}
+    entity_data = service_response.get(weather_entity)
+    if not entity_data:
+        raise RuntimeError(f"No forecast data returned for {weather_entity}")
+    return entity_data.get("forecast", [])
+
+
+def filter_forecast_range(forecast, start_dt, end_dt, field):
+    """Average of a numeric field ('temperature'/'humidity') across forecast entries within [start_dt, end_dt)."""
+    values = []
+    for entry in forecast:
+        if field not in entry:
+            continue
+        try:
+            entry_dt = datetime.fromisoformat(entry["datetime"]).replace(tzinfo=None)
+        except (TypeError, ValueError):
+            continue
+        if start_dt <= entry_dt < end_dt:
+            try:
+                values.append(round(float(entry[field]), 1))
+            except (TypeError, ValueError):
+                continue
+
+    if not values:
+        return None, 0, []
+    return round(sum(values) / len(values), 2), len(values), values
+
+
+def weighted_combine(actual_avg, actual_n, forecast_avg, forecast_n):
+    """Count-weighted average of an 'actual' average and a 'forecast' average, matching mojskrypt.txt."""
+    if actual_avg is not None and forecast_avg is not None:
+        total = actual_n + forecast_n
+        return round((actual_avg * actual_n + forecast_avg * forecast_n) / total, 1)
+    if actual_avg is not None:
+        return actual_avg
+    return forecast_avg
+
+
+def update_temp_today(temp_sensor, weather_entity):
+    now = datetime.now()
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    actual_avg, actual_n, actual_values = get_history_avg(temp_sensor, midnight, now, (-50, 50))
+    forecast = get_hourly_forecast(weather_entity)
+    forecast_avg, forecast_n, forecast_values = filter_forecast_range(forecast, now, today_end, "temperature")
+
+    if actual_avg is None and forecast_avg is None:
+        raise RuntimeError("No actual or forecast temperature data available for today")
+
+    combined = weighted_combine(actual_avg, actual_n, forecast_avg, forecast_n)
+
+    push_sensor_state(COMPUTED_SENSOR_IDS["temp_today"], combined, attributes={
+        "unit_of_measurement": "°C",
+        "device_class": "temperature",
+        "state_class": "measurement",
+        "friendly_name": "Average temperature today (actual+forecast)",
+        "actual_avg": actual_avg,
+        "forecast_avg": forecast_avg,
+        "actual_values": actual_values,
+        "forecast_values": forecast_values,
+        "actual_sample_count": actual_n,
+        "forecast_hour_count": forecast_n,
+        "last_update": now.isoformat(),
+        "source_sensor": temp_sensor,
+        "source_weather": weather_entity,
+    })
+
+
+def update_temp_tomorrow(weather_entity):
+    now = datetime.now()
+    tomorrow_start = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_end = tomorrow_start + timedelta(days=1)
+
+    forecast = get_hourly_forecast(weather_entity)
+    avg, n, values = filter_forecast_range(forecast, tomorrow_start, tomorrow_end, "temperature")
+
+    if avg is None:
+        raise RuntimeError("No forecast temperature data available for tomorrow")
+
+    push_sensor_state(COMPUTED_SENSOR_IDS["temp_tomorrow"], avg, attributes={
+        "unit_of_measurement": "°C",
+        "device_class": "temperature",
+        "state_class": "measurement",
+        "friendly_name": "Average temperature tomorrow (forecast)",
+        "values": values,
+        "hour_count": n,
+        "last_update": now.isoformat(),
+        "source_weather": weather_entity,
+    })
+
+
+def update_humidity_today(humidity_sensor, weather_entity):
+    now = datetime.now()
+    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    actual_avg, actual_n, actual_values = get_history_avg(humidity_sensor, midnight, now, (0, 100))
+    forecast = get_hourly_forecast(weather_entity)
+    forecast_avg, forecast_n, forecast_values = filter_forecast_range(forecast, now, today_end, "humidity")
+
+    if actual_avg is None and forecast_avg is None:
+        raise RuntimeError("No actual or forecast humidity data available for today")
+
+    combined = weighted_combine(actual_avg, actual_n, forecast_avg, forecast_n)
+
+    push_sensor_state(COMPUTED_SENSOR_IDS["humidity_today"], combined, attributes={
+        "unit_of_measurement": "%",
+        "device_class": "humidity",
+        "state_class": "measurement",
+        "friendly_name": "Average humidity today (actual+forecast)",
+        "actual_avg": actual_avg,
+        "forecast_avg": forecast_avg,
+        "actual_values": actual_values,
+        "forecast_values": forecast_values,
+        "actual_sample_count": actual_n,
+        "forecast_hour_count": forecast_n,
+        "last_update": now.isoformat(),
+        "source_sensor": humidity_sensor,
+        "source_weather": weather_entity,
+    })
+
+
+def update_humidity_tomorrow(weather_entity):
+    now = datetime.now()
+    tomorrow_start = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_end = tomorrow_start + timedelta(days=1)
+
+    forecast = get_hourly_forecast(weather_entity)
+    avg, n, values = filter_forecast_range(forecast, tomorrow_start, tomorrow_end, "humidity")
+
+    if avg is None:
+        raise RuntimeError("No forecast humidity data available for tomorrow")
+
+    push_sensor_state(COMPUTED_SENSOR_IDS["humidity_tomorrow"], avg, attributes={
+        "unit_of_measurement": "%",
+        "device_class": "humidity",
+        "state_class": "measurement",
+        "friendly_name": "Average humidity tomorrow (forecast)",
+        "values": values,
+        "hour_count": n,
+        "last_update": now.isoformat(),
+        "source_weather": weather_entity,
+    })
+
+
+def update_avg_temp_48h(temp_sensor):
+    now = datetime.now()
+    start = now - timedelta(hours=48)
+
+    avg, n, values = get_history_avg(temp_sensor, start, now, (-50, 50))
+    if avg is None:
+        raise RuntimeError("No temperature history available for the last 48h")
+
+    push_sensor_state(COMPUTED_SENSOR_IDS["avg_temp_48h"], avg, attributes={
+        "unit_of_measurement": "°C",
+        "device_class": "temperature",
+        "state_class": "measurement",
+        "friendly_name": "Average temperature (last 48h)",
+        "sample_count": n,
+        "last_update": now.isoformat(),
+        "source_sensor": temp_sensor,
+    })
+
+
+def run_weather_sensor_updates():
+    opts = get_addon_options()
+    temp_sensor = opts.get("temp_sensor", "")
+    humidity_sensor = opts.get("humidity_sensor", "")
+    weather_entity = opts.get("weather_forecast", "")
+
+    if temp_sensor and weather_entity:
+        try:
+            update_temp_today(temp_sensor, weather_entity)
+        except Exception as e:
+            print(f"Error updating today's temperature sensor: {e}")
+    else:
+        print("Skipping today's temperature sensor: temp_sensor/weather_forecast not configured")
+
+    if weather_entity:
+        try:
+            update_temp_tomorrow(weather_entity)
+        except Exception as e:
+            print(f"Error updating tomorrow's temperature sensor: {e}")
+    else:
+        print("Skipping tomorrow's temperature sensor: weather_forecast not configured")
+
+    if humidity_sensor and weather_entity:
+        try:
+            update_humidity_today(humidity_sensor, weather_entity)
+        except Exception as e:
+            print(f"Error updating today's humidity sensor: {e}")
+    else:
+        print("Skipping today's humidity sensor: humidity_sensor/weather_forecast not configured")
+
+    if weather_entity:
+        try:
+            update_humidity_tomorrow(weather_entity)
+        except Exception as e:
+            print(f"Error updating tomorrow's humidity sensor: {e}")
+    else:
+        print("Skipping tomorrow's humidity sensor: weather_forecast not configured")
+
+    if temp_sensor:
+        try:
+            update_avg_temp_48h(temp_sensor)
+        except Exception as e:
+            print(f"Error updating 48h average temperature sensor: {e}")
+    else:
+        print("Skipping 48h average temperature sensor: temp_sensor not configured")
+
+
+# =============================
+# Real-time energy prediction sensors (RF & Linear, today & tomorrow)
+# Recomputed whenever temp_sensor/humidity_sensor changes (via HA WebSocket),
+# after the weather-blend sensors above have been refreshed
+# =============================
+PREDICTION_SENSOR_IDS = {
+    "today_rf": "sensor.heat_pump_pred_today_rf",
+    "today_linear": "sensor.heat_pump_pred_today_linear",
+    "tomorrow_rf": "sensor.heat_pump_pred_tomorrow_rf",
+    "tomorrow_linear": "sensor.heat_pump_pred_tomorrow_linear",
+}
+
+def _predict_and_push_sensor(sensor_key, model_path, avg_temp, avg_temp_48h, avg_humidity, friendly_name):
+    result, status_code = predict_energy(model_path, avg_temp, avg_temp_48h, avg_humidity)
+    if status_code != 200 or result.get("status") != "success":
+        raise RuntimeError(result.get("message", "Prediction failed"))
+
+    energy_kwh = result["prediction"]["energy_kwh"]
+    push_sensor_state(PREDICTION_SENSOR_IDS[sensor_key], energy_kwh, attributes={
+        "unit_of_measurement": "kWh",
+        "device_class": "energy",
+        "state_class": "measurement",
+        "friendly_name": friendly_name,
+        "avg_temp": avg_temp,
+        "avg_temp_48h": avg_temp_48h,
+        "avg_humidity": avg_humidity,
+        "last_update": datetime.now().isoformat(),
+    })
+    return energy_kwh
+
+def update_prediction_sensors():
+    """Recompute today/tomorrow RF & Linear energy predictions from the computed weather sensors."""
+    try:
+        avg_temp_48h = get_sensor_state(COMPUTED_SENSOR_IDS["avg_temp_48h"])
+    except Exception as e:
+        print(f"Skipping prediction sensor update, 48h average temperature unavailable: {e}")
+        return
+
+    try:
+        avg_temp_today = get_sensor_state(COMPUTED_SENSOR_IDS["temp_today"])
+        avg_humidity_today = get_sensor_state(COMPUTED_SENSOR_IDS["humidity_today"])
+        _predict_and_push_sensor("today_rf", "/config/pump/heatpump_model_rf.pkl",
+                                  avg_temp_today, avg_temp_48h, avg_humidity_today,
+                                  "Predicted energy consumption today (Random Forest)")
+        _predict_and_push_sensor("today_linear", "/config/pump/heatpump_model_linear.pkl",
+                                  avg_temp_today, avg_temp_48h, avg_humidity_today,
+                                  "Predicted energy consumption today (Linear Regression)")
+    except Exception as e:
+        print(f"Error updating today's prediction sensors: {e}")
+
+    try:
+        avg_temp_tomorrow = get_sensor_state(COMPUTED_SENSOR_IDS["temp_tomorrow"])
+        avg_humidity_tomorrow = get_sensor_state(COMPUTED_SENSOR_IDS["humidity_tomorrow"])
+        _predict_and_push_sensor("tomorrow_rf", "/config/pump/heatpump_model_rf.pkl",
+                                  avg_temp_tomorrow, avg_temp_48h, avg_humidity_tomorrow,
+                                  "Predicted energy consumption tomorrow (Random Forest)")
+        _predict_and_push_sensor("tomorrow_linear", "/config/pump/heatpump_model_linear.pkl",
+                                  avg_temp_tomorrow, avg_temp_48h, avg_humidity_tomorrow,
+                                  "Predicted energy consumption tomorrow (Linear Regression)")
+    except Exception as e:
+        print(f"Error updating tomorrow's prediction sensors: {e}")
+
+
+def _ha_ws_url():
+    if os.environ.get("SUPERVISOR_TOKEN"):
+        return "ws://supervisor/core/websocket"
+
+    ha_url = os.environ.get("HA_URL", "http://supervisor/core/api")
+    base = ha_url[:-4] if ha_url.endswith("/api") else ha_url
+    base = base.replace("https://", "wss://").replace("http://", "ws://")
+    return f"{base}/api/websocket"
+
+_last_watched_sensor_states = {}
+
+def watched_sensor_ws_listener():
+    """
+    Keeps a persistent WebSocket connection to Home Assistant open, subscribed to
+    state_changed events for temp_sensor and humidity_sensor, and recomputes the
+    weather-blend sensors (today/tomorrow temp & humidity, 48h average) plus the
+    RF/Linear prediction sensors every time either source sensor's state changes.
+    """
+    global _last_watched_sensor_states
+
+    if websocket is None:
+        print("websocket-client is not installed; real-time sensor listener disabled")
+        return
+
+    token = os.environ.get("SUPERVISOR_TOKEN") or os.environ.get("HA_TOKEN")
+    if not token:
+        print("No HA token available; real-time sensor listener disabled")
+        return
+
+    ws_url = _ha_ws_url()
+
+    while True:
+        opts = get_addon_options()
+        watched_entities = {e for e in (opts.get("temp_sensor", ""), opts.get("humidity_sensor", "")) if e}
+        if not watched_entities:
+            print("temp_sensor/humidity_sensor not configured; retrying WebSocket listener in 30s")
+            time.sleep(30)
+            continue
+
+        ws = None
+        try:
+            ws = websocket.create_connection(ws_url, timeout=30)
+
+            auth_required = json.loads(ws.recv())
+            if auth_required.get("type") != "auth_required":
+                raise RuntimeError(f"Unexpected WebSocket handshake message: {auth_required}")
+
+            ws.send(json.dumps({"type": "auth", "access_token": token}))
+            auth_result = json.loads(ws.recv())
+            if auth_result.get("type") != "auth_ok":
+                raise RuntimeError(f"WebSocket authentication failed: {auth_result}")
+
+            ws.send(json.dumps({"id": 1, "type": "subscribe_events", "event_type": "state_changed"}))
+            sub_result = json.loads(ws.recv())
+            if not sub_result.get("success", False):
+                raise RuntimeError(f"Failed to subscribe to state_changed events: {sub_result}")
+
+            print(f"HA WebSocket connected, watching {', '.join(sorted(watched_entities))} for changes")
+
+            while True:
+                message = json.loads(ws.recv())
+                if message.get("type") != "event":
+                    continue
+
+                event_data = message.get("event", {}).get("data", {})
+                entity_id = event_data.get("entity_id")
+                if entity_id not in watched_entities:
+                    continue
+
+                new_state = event_data.get("new_state") or {}
+                state_str = new_state.get("state")
+                if state_str in (None, "unavailable", "unknown") or state_str == _last_watched_sensor_states.get(entity_id):
+                    continue
+
+                _last_watched_sensor_states[entity_id] = state_str
+                print(f"{entity_id} changed to {state_str}; recomputing weather and prediction sensors")
+                try:
+                    run_weather_sensor_updates()
+                    update_prediction_sensors()
+                except Exception as e:
+                    print(f"Error recomputing sensors after {entity_id} change: {e}")
+
+        except Exception as e:
+            print(f"HA WebSocket listener error: {e}; reconnecting in 10s")
+            time.sleep(10)
+        finally:
+            if ws is not None:
+                try:
+                    ws.close()
+                except Exception:
+                    pass
+
 
 def fetch_all_sensors():
     sensors = get_sensor_names()
@@ -487,27 +944,35 @@ def log_daily_data(date_str=None):
             
     return row_data, "updated" if updated else "appended"
 
+_last_weather_update_hour = None
+
 def scheduler_thread():
+    global _last_weather_update_hour
     print("Starting background thread for daily logging...")
     while True:
         try:
             now = datetime.now()
             today_str = now.strftime("%Y-%m-%d")
-            
+
+            hour_key = now.strftime("%Y-%m-%d %H")
+            if now.minute == 1 and _last_weather_update_hour != hour_key:
+                print(f"Running hourly weather/temperature sensor updates at {now}...")
+                run_weather_sensor_updates()
+                _last_weather_update_hour = hour_key
+
             with logging_lock:
                 last_run = logging_status["last_run"]
-                
+
             next_run_str = f"{today_str} 23:59:00"
             next_run_dt = datetime.strptime(next_run_str, "%Y-%m-%d %H:%M:%S")
             if now >= next_run_dt:
                 next_run_dt = next_run_dt + timedelta(days=1)
-            
+
             with logging_lock:
                 logging_status["next_run"] = next_run_dt.strftime("%Y-%m-%d %H:%M:%S")
-            
+
             if now.hour == 23 and now.minute == 59 and last_run != today_str:
-                sensors = get_sensor_names()
-                if any(sensors.values()):
+                if get_addon_options().get("energy_consumption_sensor"):
                     print(f"Starting automatic daily data logging at {now}...")
                     row_data, action = log_daily_data(today_str)
 
@@ -550,6 +1015,31 @@ def log_status_view():
 
     status_copy["configured_sensors"] = get_sensor_names()
     return jsonify(status_copy), 200
+
+
+@app.route('/computed_sensors', methods=['GET'])
+def computed_sensors_view():
+    sensors = []
+    for entity_id in list(COMPUTED_SENSOR_IDS.values()) + list(PREDICTION_SENSOR_IDS.values()):
+        entry = {"entity_id": entity_id}
+        try:
+            data = get_full_sensor_state(entity_id)
+            attributes = data.get("attributes", {})
+            entry["state"] = data.get("state")
+            entry["friendly_name"] = attributes.get("friendly_name", entity_id)
+            entry["unit_of_measurement"] = attributes.get("unit_of_measurement")
+            entry["last_update"] = attributes.get("last_update")
+            entry["available"] = True
+        except Exception as e:
+            entry["state"] = None
+            entry["friendly_name"] = entity_id
+            entry["unit_of_measurement"] = None
+            entry["last_update"] = None
+            entry["available"] = False
+            entry["error"] = str(e)
+        sensors.append(entry)
+
+    return jsonify({"status": "success", "sensors": sensors}), 200
 
 
 CSV_COLUMNS = ["date", "avg_temp", "avg_temp_48h", "avg_humidity", "energy_consumption"]
@@ -616,6 +1106,9 @@ ENDPOINT_INFO = {
     'csv_data_view': {
         "description": "Returns data from daily_temps.csv as JSON (columns: date, avg_temp, avg_temp_48h, avg_humidity, energy_consumption)",
     },
+    'computed_sensors_view': {
+        "description": "Current state of the weather-averaging and RF/Linear energy prediction sensors this add-on computes and pushes to Home Assistant",
+    },
     'list_endpoints_view': {
         "description": "List of all available endpoints with descriptions",
     },
@@ -650,9 +1143,26 @@ if __name__ == '__main__':
     publish_mae_sensor(RF_MAE_ENTITY_ID, RF_METADATA_FILE, "RF Model Test MAE")
     publish_mae_sensor(LR_MAE_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test MAE")
 
+    # Seed the weather/temperature computed sensors so they aren't empty until the next hourly update
+    try:
+        run_weather_sensor_updates()
+    except Exception as e:
+        print(f"Error running initial weather sensor updates: {e}")
+
+    # Seed the RF/Linear prediction sensors so they aren't empty until the next temp_sensor change
+    try:
+        update_prediction_sensors()
+    except Exception as e:
+        print(f"Error running initial prediction sensor updates: {e}")
+
     # Start the background thread for automatic logging
     t = threading.Thread(target=scheduler_thread)
     t.daemon = True
     t.start()
-    
+
+    # Start the background thread listening for temp_sensor/humidity_sensor changes over HA's WebSocket API
+    t_ws = threading.Thread(target=watched_sensor_ws_listener)
+    t_ws.daemon = True
+    t_ws.start()
+
     app.run(host='0.0.0.0', port=8000, debug=False)

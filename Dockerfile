@@ -13,7 +13,7 @@ COPY checkModel_linear.py /app
 COPY index.html /app
 
 # Instalacja bibliotek Pythona
-RUN pip install --no-cache-dir numpy pandas requests joblib scikit-learn flask matplotlib
+RUN pip install --no-cache-dir numpy pandas requests joblib scikit-learn flask matplotlib websocket-client
 
 # Domyślne uruchomienie serwera Flask
 CMD ["python3", "server.py"]

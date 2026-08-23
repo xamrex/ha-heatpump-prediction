@@ -1,0 +1,13 @@
+configuration:
+  temp_sensor:
+    name: "Outdoor temperature sensor"
+    description: "Entity ID of the sensor reporting current outdoor temperature (e.g. sensor.outside_temperature). Used to compute the 48h history average and the actual/forecast blend for today's temperature. SENSOR NEEDS TO HAVE device_class TEMPERATURE, or unit '°C'/'°F'."
+  humidity_sensor:
+    name: "Outdoor humidity sensor"
+    description: "Entity ID of the sensor reporting current outdoor humidity (e.g. sensor.outside_humidity). Used to compute the actual/forecast blend for today's humidity. SENSOR NEEDS TO HAVE device_class HUMIDITY, or unit '%'."
+  weather_forecast:
+    name: "Weather forecast entity"
+    description: "Entity ID of a weather integration that provides hourly forecasts (e.g. weather.home). Used to blend the remaining hours of today and all of tomorrow's forecast into the computed temperature/humidity sensors. ENTITY NEEDS TO BE FROM THE 'weather.' DOMAIN (e.g. weather.home), AND ITS HOURLY FORECAST NEEDS TO INCLUDE HUMIDITY. If your current weather integration's forecast doesn't include humidity, you can use the Met.no (Meteorologisk Institutt) integration instead."
+  energy_consumption_sensor:
+    name: "Energy consumption sensor"
+    description: "Entity ID of the sensor tracking your heat pump's DAILY energy consumption. Logged once a day (just before midnight) into the training dataset and used as the target value when training the RF and Linear models. SENSOR NEEDS TO HAVE unit_of_measurement 'kWh'."

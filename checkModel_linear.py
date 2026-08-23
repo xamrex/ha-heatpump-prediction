@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """
-Skrypt predykcji zużycia energii pompy ciepła
-na podstawie modelu liniowego (Linear Regression) zapisanego w heatpump_model_linear.pkl.
+Heat pump energy consumption prediction script
+based on the linear model (Linear Regression) saved in heatpump_model_linear.pkl.
 
-Tworzy wykres porównujący aktualne zużycie i estymatę modelu
-i liczy metryki MAE, R² i MAPE.
+Creates a chart comparing actual consumption against the model's estimate
+and computes the MAE, R2, and MAPE metrics.
 
-Wymagania:
+Requirements:
     pip install pandas numpy matplotlib scikit-learn joblib
 
-Użycie:
+Usage:
     python3 predict_energy_linear.py
 """
 
@@ -24,11 +24,11 @@ from datetime import datetime
 #show_plot = os.environ.get("SHOW_PLOT", "0") == "1"
 show_plot = "1"
 # =============================
-# 1. Wczytanie modelu
+# 1. Load the model
 # =============================
 model_dir = "/config/pump"
 plots_dir = os.path.join(model_dir, "plots")
-# utwórz folder plots jeśli nie istnieje
+# create the plots folder if it doesn't exist
 os.makedirs(plots_dir, exist_ok=True)
 today = datetime.now()
 
@@ -40,40 +40,40 @@ plot_file = os.path.join(
     f"predicted_vs_actual_linear_{today.strftime('%d-%m-%Y')}.png"
 )
 if not os.path.exists(model_file):
-    raise FileNotFoundError(f"[ERROR] Brak pliku modelu: {model_file}")
+    raise FileNotFoundError(f"[ERROR] Model file not found: {model_file}")
 
 model = joblib.load(model_file)
-print(f"[OK] Model liniowy załadowany: {model_file}")
+print(f"[OK] Linear model loaded: {model_file}")
 
 # =============================
-# 2. Wczytanie danych
+# 2. Load data
 # =============================
 if not os.path.exists(input_csv):
-    raise FileNotFoundError(f"[ERROR] Brak pliku {input_csv}")
+    raise FileNotFoundError(f"[ERROR] File not found: {input_csv}")
 
 df = pd.read_csv(input_csv)
 
 # =============================
-# 3. Obliczenie heating_degree
+# 3. Compute heating_degree
 # =============================
 if "heating_degree" not in df.columns:
     df["heating_degree"] = np.maximum(0, 18 - df["avg_temp"])
 
 # =============================
-# 4. Predykcja
+# 4. Prediction
 # =============================
 feature_names = ["avg_temp", "avg_temp_48h", "heating_degree", "avg_humidity"]
 
 df["predicted_energy"] = model.predict(df[feature_names])
 
 # =============================
-# 5. Zapis wyników
+# 5. Save results
 # =============================
 df.to_csv(output_csv, index=False)
-print(f"[OK] Zapisano wynik do: {output_csv}")
+print(f"[OK] Results saved to: {output_csv}")
 
 # =============================
-# 6. Obliczenie metryk
+# 6. Compute metrics
 # =============================
 if "energy_consumption" in df.columns:
     mae = mean_absolute_error(df["energy_consumption"], df["predicted_energy"])
@@ -88,16 +88,16 @@ if "energy_consumption" in df.columns:
     valid_df = df[df["energy_consumption"] != 0].copy()
     if not valid_df.empty:
         mape = (np.abs(valid_df["energy_consumption"] - valid_df["predicted_energy"]) / valid_df["energy_consumption"]).mean() * 100
-        print(f"[INFO] Średni błąd procentowy (MAPE): {mape:.2f} %")
+        print(f"[INFO] Mean absolute percentage error (MAPE): {mape:.2f} %")
     else:
         mape = None
-        print("[WARNING] Brak danych do policzenia MAPE")
+        print("[WARNING] No data available to compute MAPE")
 else:
     mae = r2 = mape = mean_error = None
-    print("[WARNING] Brak kolumny 'energy_consumption', nie można policzyć MAE i R²")
+    print("[WARNING] Missing 'energy_consumption' column, cannot compute MAE and R2")
 
 # =============================
-# 6b. Zapis metryk do JSON
+# 6b. Save metrics to JSON
 # =============================
 metrics_file = os.path.join(model_dir, "dane_linear.json")
 metrics_data = {
@@ -110,35 +110,35 @@ metrics_data = {
 
 with open(metrics_file, "w") as f:
     json.dump(metrics_data, f, indent=4)
-print(f"[OK] Zapisano metryki do pliku: {metrics_file}")
+print(f"[OK] Metrics saved to file: {metrics_file}")
 
 # =============================
-# 7. Tworzenie wykresu
+# 7. Create the chart
 # =============================
 if show_plot:
     plt.figure(figsize=(10, 5))
-    plt.plot(df["date"], df["predicted_energy"], label="Predykcja (kWh)", marker='o')
+    plt.plot(df["date"], df["predicted_energy"], label="Prediction (kWh)", marker='o')
     if "energy_consumption" in df.columns:
-        plt.plot(df["date"], df["energy_consumption"], label="Rzeczywiste zużycie (kWh)", marker='x')
+        plt.plot(df["date"], df["energy_consumption"], label="Actual consumption (kWh)", marker='x')
 
     plt.xticks(rotation=45)
-    plt.xlabel("Data")
-    plt.ylabel("Zużycie energii [kWh]")
-    plt.title("Zużycie energii pompy ciepła - rzeczywiste vs predykcja (Linear Regression)")
+    plt.xlabel("Date")
+    plt.ylabel("Energy consumption [kWh]")
+    plt.title("Heat pump energy consumption - actual vs prediction (Linear Regression)")
 
     if mae is not None and r2 is not None:
         title_text = f"MAE: {mae:.2f} kWh | R2: {r2:.3f}"
         if mape is not None:
-            title_text += f" | Średni błąd %: {mape:.2f}%"
+            title_text += f" | Mean error %: {mape:.2f}%"
         plt.suptitle(title_text, y=0.92, fontsize=10)
 
     plt.legend()
     plt.tight_layout()
 
-    # Zapis wykresu
+    # Save the chart
     plt.savefig(plot_file, dpi=150)
-    print(f"[OK] Wykres zapisany do pliku: {plot_file}")
+    print(f"[OK] Chart saved to file: {plot_file}")
 
-    # Plik zawsze dostępny dla Flask
+    # File always available for Flask
     latest_plot_file = os.path.join(plots_dir, "predicted_vs_actual_linear.png")
     plt.savefig(latest_plot_file, dpi=150)

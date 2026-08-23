@@ -2,7 +2,7 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.30` (see `config.yaml`)
+## Current version: `4.37` (see `config.yaml`)
 
 ## 1. Add-on options reworked
 
@@ -100,6 +100,47 @@ Originally these sensors only refreshed hourly (`:01` scheduler tick, still kept
 - Bug: `update_temp_today()`/`update_humidity_today()` already got a time-weighted "actual so far" average from `get_history_avg()` (fix #8), but `weighted_combine()` then blended it with the forecast average using **raw sample count** (`actual_n`, the number of state changes) against **forecast hour count** (`forecast_n`) — two different units. A sensor that changes often would out-weigh the forecast even if it only covered an hour of the day; a sensor that barely changes would be under-weighted even if it covered most of the day.
 - Fix: `weighted_combine()` now takes `actual_weight`/`forecast_weight` in the same unit (hours). `actual_weight` is the real elapsed time since midnight (`(now - midnight).total_seconds() / 3600`), `forecast_weight` stays as the forecast hour count. So "today's expected average" is now a genuine hours-elapsed vs hours-remaining blend: `(actual_avg * hours_so_far + forecast_avg * hours_remaining) / total_hours`. Raw sample count is still exposed as `actual_sample_count` for diagnostics; the new `actual_hours` attribute shows the weight actually used.
 - Applies to both `sensor.heat_pump_pred_avg_temp_today_actual_and_forcast` and `sensor.heat_pump_pred_avg_humidity_today_actual_and_forcast`.
+
+## 10. Removed manual Train buttons in favor of daily auto-retraining, added model tooltips, and added config validation (v4.31)
+
+- **Automatic daily retraining**: `server.py` now retrains both models on its own every day at `00:10` (`AUTO_TRAIN_HOUR`/`AUTO_TRAIN_MINUTE`), shortly after the `23:59` daily CSV write completes, so each day's fresh row is included. Implemented as a new check inside the existing `scheduler_thread()` 30s loop, guarded by an `auto_train_status["last_run"]` date so it fires once per day; each model is only (re)launched if it isn't already training (skips a slot if a manual `/train`/`/trainlinear` call is in flight). The manual `/train` and `/trainlinear` endpoints are unchanged and still work — only the dashboard buttons calling them were removed.
+- **"Next training" in the UI**: `/status` and `/statuslinear` now include a `next_training` field (`get_next_auto_training_time()`, the next occurrence of `00:10`). The RF and Linear cards in `index.html` show it in a new "Next training" row under "Last training". The "Train RF model" / "Train Linear model" buttons and the `trainModel()` JS function were removed from `index.html` since training is no longer manually triggered from the dashboard.
+- **Model description tooltips**: hovering "Random Forest (RF)" or "Linear Regression" in their card headers now shows a balloon tooltip (new `.tooltip-trigger` CSS, dark glass style matching the rest of the dashboard) explaining when each model is a good fit — Random Forest for larger datasets (30+ days) but unable to extrapolate outside the temperature range it was trained on; Linear Regression for small datasets (under 30 days), simpler and can extrapolate, but generally less accurate once more data exists.
+- **Sensor configuration validation**: added `get_missing_required_sensors()`, checking that all four add-on options (`temp_sensor`, `humidity_sensor`, `weather_forecast`, `energy_consumption_sensor`) are present and non-empty in the add-on's configuration. `home_view()` (the `/` route) now calls this first and, if anything is missing, serves a standalone dark-themed error page (`render_config_error_page()`, HTTP 503) listing exactly which sensor(s) need to be set, instead of the normal dashboard. This is a config-presence check only (no live HA lookup of the entity), matching the existing lightweight validation style already used elsewhere in the add-on (e.g. `get_sensor_state`'s empty-string check).
+
+## 11. Added descriptions for the 4 configuration options (v4.32)
+
+- New `translations/en.yaml`, using Supervisor's add-on translation format (`configuration.<option_key>.name` / `.description`). Supervisor reads this directly from the add-on's own directory (like `CHANGELOG.md`/`DOCS.md`) — it does **not** need to be added to `Dockerfile`'s `COPY` list, since it's store/config metadata, not a runtime file.
+- Each of the four options (`temp_sensor`, `humidity_sensor`, `weather_forecast`, `energy_consumption_sensor`) now shows a friendly display name and an explanatory description in the add-on's Configuration tab in Home Assistant, so users know which entity to pick and what it's used for.
+
+## 12. Validate sensor entity type/unit, not just presence (v4.33)
+
+- Bug: a wrongly-configured sensor (e.g. typing a `sensor.battery` entity into `weather_forecast`) previously passed the config check from #10 (the option string isn't empty) and the add-on started normally. Nothing errored — the computed sensors that depend on the forecast (`avg_temp_today`, `avg_temp_tomorrow`, `avg_humidity_today`, `avg_humidity_tomorrow`) just silently stopped updating, because `get_hourly_forecast()`/`filter_forecast_range()` got no usable forecast data from a non-weather entity and every downstream call was wrapped in try/except.
+- Fix: `get_missing_required_sensors()` was replaced with `get_sensor_config_problems()`, which for each of the 4 required options now: (1) checks it's non-empty, (2) queries HA (`get_full_sensor_state`) to confirm the entity actually exists and has a known state, (3) runs a per-key validator (`SENSOR_VALIDATORS`) checking it's the *right kind* of entity:
+  - `weather_forecast` must be a `weather.*` entity.
+  - `temp_sensor` must have `device_class: temperature` or a `°C`/`°F` unit.
+  - `humidity_sensor` must have `device_class: humidity` or a `%` unit.
+  - `energy_consumption_sensor` must report its `unit_of_measurement` as `kWh` (case-insensitive).
+- `home_view()` (the `/` route) shows the same dark-themed configuration-error page from #10 for any of these failures, now listing the specific problem per sensor (missing / unreachable / wrong unit or domain) instead of just "not configured".
+
+## 13. Documented the #12 validation requirements in the config UI (v4.34)
+
+- `translations/en.yaml` descriptions for all 4 options now spell out the exact requirement enforced by `SENSOR_VALIDATORS` in `server.py` (§12), so a user filling in the Configuration tab sees the constraint up front instead of only discovering it via the error page after saving: `temp_sensor` needs `device_class: temperature` or unit `°C`/`°F`; `humidity_sensor` needs `device_class: humidity` or unit `%`; `weather_forecast` must be a `weather.*` entity; `energy_consumption_sensor` must have `unit_of_measurement: kWh`.
+
+## 14. Removed "Save now" button; added minimum-training-data warning (v4.35)
+
+- Removed the "Save now" button (`btn_log_now`) and its `logNow()` JS handler from the Data Logging card in `index.html`. The `/log_now` endpoint itself is unchanged and still callable directly — same pattern as the earlier removal of the manual Train buttons (#10), where the UI trigger goes but the underlying endpoint stays.
+- Added a minimum-training-data warning: `server.py` now has `MIN_TRAINING_ROWS = 2` and `get_csv_row_count()` (counts data rows in `daily_temps.csv`, excluding the header, returns 0 if the file doesn't exist). `/log_status` includes `csv_row_count`, `min_training_rows`, and `training_data_warning` (a message, or `null` once enough data exists) in its JSON response.
+- `index.html`'s Data Logging card shows this as an amber warning banner (`#training_data_warning`, using the existing `--color-warning` token) whenever fewer than 2 days of data have been logged, e.g. "Only 1 day(s) of data logged. At least 2 days of data are needed before the model can be trained."
+
+## 15. Translated standalone training/evaluation scripts to English (v4.36)
+
+- `train_model.py`, `train_model_linear.py`, `checkModel.py`, `checkModel_linear.py` had Polish docstrings, print statements, chart labels/titles, and error messages left over from their original authoring. Translated all of it to English (docstrings, console output, `matplotlib` axis labels/titles/legends) to match the rest of the add-on's English-only UI/output convention. Also replaced Polish-diacritic special characters (e.g. `❌`, `✓`, `°C` arrows) with plain ASCII equivalents in console output for safer terminal/log encoding. No behavioral changes — output file names, JSON keys, and CSV columns are unchanged.
+
+## 16. Validate that the weather forecast includes humidity (v4.37)
+
+- Bug/gap: `_validate_weather_forecast()` (§12) only checked that `weather_forecast` was a `weather.*` entity — it never checked whether that entity's hourly forecast actually contains humidity data. Some weather integrations only forecast temperature, which meant `sensor.heat_pump_pred_avg_humidity_today_actual_and_forcast`/`..._tomorrow_forecast` would silently have no forecast-side data despite the sensor itself passing validation.
+- Fix: `_validate_weather_forecast()` now calls `get_hourly_forecast(entity_id)` at startup validation time and fails with a configuration-error page if the call errors, the forecast is empty, or none of the returned hourly entries contain a `humidity` key. The error message and the `weather_forecast` option's description in `translations/en.yaml` both point users at the Met.no (Meteorologisk Institutt) integration as a weather source that does provide humidity forecasts.
 
 ## Open / unverified items for next session
 

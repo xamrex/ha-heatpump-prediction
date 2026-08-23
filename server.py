@@ -44,6 +44,173 @@ LR_MAE_ENTITY_ID = "sensor.lr_mae"
 RF_METADATA_FILE = "/config/pump/model_metadata_rf.json"
 LINEAR_METADATA_FILE = "/config/pump/model_metadata_linear.json"
 
+# Daily automatic retraining schedule (replaces the manual Train buttons in the UI)
+AUTO_TRAIN_HOUR = 0
+AUTO_TRAIN_MINUTE = 10
+auto_train_status = {"last_run": None}
+
+
+def get_next_auto_training_time(now=None):
+    now = now or datetime.now()
+    candidate = now.replace(hour=AUTO_TRAIN_HOUR, minute=AUTO_TRAIN_MINUTE, second=0, microsecond=0)
+    if now >= candidate:
+        candidate += timedelta(days=1)
+    return candidate
+
+
+REQUIRED_SENSOR_OPTIONS = [
+    ("temp_sensor", "Outdoor temperature sensor"),
+    ("humidity_sensor", "Outdoor humidity sensor"),
+    ("weather_forecast", "Weather forecast entity"),
+    ("energy_consumption_sensor", "Energy consumption sensor"),
+]
+
+
+def _validate_temperature_sensor(entity_id, attributes):
+    unit = attributes.get("unit_of_measurement")
+    device_class = attributes.get("device_class")
+    if device_class == "temperature" or unit in ("°C", "°F"):
+        return None
+    return f"'{entity_id}' doesn't look like a temperature sensor (unit='{unit}', device_class='{device_class}')"
+
+
+def _validate_humidity_sensor(entity_id, attributes):
+    unit = attributes.get("unit_of_measurement")
+    device_class = attributes.get("device_class")
+    if device_class == "humidity" or unit == "%":
+        return None
+    return f"'{entity_id}' doesn't look like a humidity sensor (unit='{unit}', device_class='{device_class}')"
+
+
+def _validate_weather_forecast(entity_id, attributes):
+    domain = entity_id.split(".", 1)[0] if "." in entity_id else ""
+    if domain != "weather":
+        return f"'{entity_id}' must be a weather entity (domain 'weather.', e.g. weather.home), not a '{domain}.*' entity"
+
+    try:
+        forecast = get_hourly_forecast(entity_id)
+    except Exception as e:
+        return f"'{entity_id}': could not fetch its hourly forecast from Home Assistant ({e})"
+
+    if not forecast:
+        return f"'{entity_id}' returned an empty hourly forecast"
+
+    if not any("humidity" in entry for entry in forecast):
+        return (
+            f"'{entity_id}' hourly forecast doesn't include humidity data. "
+            f"You can use the Met.no (Meteorologisk Institutt) integration to get a humidity forecast."
+        )
+
+    return None
+
+
+def _validate_energy_sensor(entity_id, attributes):
+    unit = (attributes.get("unit_of_measurement") or "")
+    if unit.lower() != "kwh":
+        return f"'{entity_id}' must report energy consumption in kWh (found unit='{unit or 'none'}')"
+    return None
+
+
+SENSOR_VALIDATORS = {
+    "temp_sensor": _validate_temperature_sensor,
+    "humidity_sensor": _validate_humidity_sensor,
+    "weather_forecast": _validate_weather_forecast,
+    "energy_consumption_sensor": _validate_energy_sensor,
+}
+
+
+def get_sensor_config_problems():
+    """Checks each required sensor option is set, exists in HA, and looks like the right kind of entity.
+
+    A wrong-but-present entity (e.g. a battery sensor typo'd into weather_forecast) doesn't raise
+    HA API errors anywhere - it just silently fails to produce sensible computed values downstream.
+    So this validates domain/unit/device_class up front instead of only checking the option isn't empty.
+    """
+    opts = get_addon_options()
+    problems = []
+    for key, label in REQUIRED_SENSOR_OPTIONS:
+        entity_id = (opts.get(key) or "").strip()
+        if not entity_id:
+            problems.append(f"{label}: not configured")
+            continue
+
+        try:
+            data = get_full_sensor_state(entity_id)
+        except Exception as e:
+            problems.append(f"{label} ('{entity_id}'): could not read this entity from Home Assistant ({e})")
+            continue
+
+        state = data.get("state")
+        if state in (None, "unknown", "unavailable"):
+            problems.append(f"{label} ('{entity_id}'): current state is '{state}'")
+            continue
+
+        validator = SENSOR_VALIDATORS.get(key)
+        if validator:
+            error = validator(entity_id, data.get("attributes", {}) or {})
+            if error:
+                problems.append(f"{label}: {error}")
+
+    return problems
+
+
+def render_config_error_page(problems):
+    items_html = "".join(f"<li>{problem}</li>" for problem in problems)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Heat Pump Prediction - Configuration required</title>
+<style>
+    body {{
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #0a0b10;
+        color: #f3f4f6;
+        font-family: 'Segoe UI', Arial, sans-serif;
+    }}
+    .box {{
+        max-width: 560px;
+        margin: 2rem;
+        padding: 2rem 2.5rem;
+        background: rgba(30, 32, 48, 0.6);
+        border: 1px solid rgba(239, 68, 68, 0.35);
+        border-radius: 16px;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    }}
+    h1 {{
+        margin-top: 0;
+        font-size: 1.4rem;
+        color: #ef4444;
+    }}
+    p {{
+        color: #9ca3af;
+        line-height: 1.5;
+    }}
+    ul {{
+        color: #f3f4f6;
+        line-height: 1.8;
+    }}
+    code {{
+        background: rgba(255,255,255,0.08);
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+    }}
+</style>
+</head>
+<body>
+    <div class="box">
+        <h1>Configuration required</h1>
+        <p>The Heat Pump Prediction add-on cannot start its dashboard because of the following problem(s) with the configured sensors:</p>
+        <ul>{items_html}</ul>
+        <p>Open <code>Settings &rarr; Add-ons &rarr; Heat Pump prediction &rarr; Configuration</code> in Home Assistant, fix the entity ID(s) above, then restart the add-on.</p>
+    </div>
+</body>
+</html>"""
+
 # =============================
 # Training functions
 # =============================
@@ -113,6 +280,10 @@ def run_training_linear():
 # =============================
 @app.route('/', endpoint='home')
 def home_view():
+    problems = get_sensor_config_problems()
+    if problems:
+        return render_config_error_page(problems), 503
+
     html_path = "index.html"
     if not os.path.exists(html_path):
         script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -164,6 +335,8 @@ def status_rf_view():
     with status_lock:
         response = training_status["rf"].copy()
 
+    response["next_training"] = get_next_auto_training_time().isoformat()
+
     metadata_file = "/config/pump/model_metadata_rf.json"
 
     if os.path.exists(metadata_file):
@@ -192,6 +365,8 @@ def status_linear_view():
     # safe copy of the status (thread-safe)
     with status_lock:
         response = training_status["linear"].copy()
+
+    response["next_training"] = get_next_auto_training_time().isoformat()
 
     metadata_file = "/config/pump/model_metadata_linear.json"
 
@@ -328,6 +503,17 @@ def show_results_linear_view():
 OPTIONS_FILE = "/data/options.json"
 FALLBACK_OPTIONS_FILE = "/config/heatpumptrain/options.json"
 CSV_FILE = "/config/pump/daily_temps.csv"
+MIN_TRAINING_ROWS = 2
+
+
+def get_csv_row_count():
+    """Counts data rows in CSV_FILE (excluding the header). Returns 0 if the file doesn't exist."""
+    if not os.path.exists(CSV_FILE):
+        return 0
+    with open(CSV_FILE, mode='r', newline='', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        next(reader, None)  # skip header
+        return sum(1 for _ in reader)
 
 logging_status = {
     "last_run": None,
@@ -1010,6 +1196,20 @@ def scheduler_thread():
                 run_weather_sensor_updates()
                 _last_weather_update_hour = hour_key
 
+            if now.hour == AUTO_TRAIN_HOUR and now.minute == AUTO_TRAIN_MINUTE:
+                with status_lock:
+                    already_ran_today = auto_train_status["last_run"] == today_str
+                if not already_ran_today:
+                    print(f"Starting automatic daily model retraining at {now}...")
+                    with status_lock:
+                        auto_train_status["last_run"] = today_str
+                        rf_idle = not training_status["rf"]["is_training"]
+                        linear_idle = not training_status["linear"]["is_training"]
+                    if rf_idle:
+                        threading.Thread(target=run_training_rf, daemon=True).start()
+                    if linear_idle:
+                        threading.Thread(target=run_training_linear, daemon=True).start()
+
             with logging_lock:
                 last_run = logging_status["last_run"]
 
@@ -1064,6 +1264,18 @@ def log_status_view():
         status_copy = logging_status.copy()
 
     status_copy["configured_sensors"] = get_sensor_names()
+
+    row_count = get_csv_row_count()
+    status_copy["csv_row_count"] = row_count
+    status_copy["min_training_rows"] = MIN_TRAINING_ROWS
+    if row_count < MIN_TRAINING_ROWS:
+        status_copy["training_data_warning"] = (
+            f"Only {row_count} day(s) of data logged. "
+            f"At least {MIN_TRAINING_ROWS} days of data are needed before the model can be trained."
+        )
+    else:
+        status_copy["training_data_warning"] = None
+
     return jsonify(status_copy), 200
 
 

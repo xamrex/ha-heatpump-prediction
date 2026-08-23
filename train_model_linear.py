@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-Standalone script do trenowania modelu LINEAR REGRESSION dla pompy ciepła.
-URUCHAMIAĆ NA PC/LAPTOPIE, NIE W HOME ASSISTANT!
+Standalone script for training the LINEAR REGRESSION heat pump model.
+RUN ON A PC/LAPTOP, NOT INSIDE HOME ASSISTANT!
 
-Wymagania:
+Requirements:
     pip install pandas numpy scikit-learn joblib
 
-Skrypt:
-1. Wczytuje dane z daily_temps.csv
-2. Trenuje model Linear Regression
-3. Zapisuje model do heatpump_model_linear.pkl
-4. Zapisuje metadane do model_metadata_linear.json
-5. Testuje predykcję na przykładowych danych
+The script:
+1. Loads data from daily_temps.csv
+2. Trains a Linear Regression model
+3. Saves the model to heatpump_model_linear.pkl
+4. Saves metadata to model_metadata_linear.json
+5. Tests prediction on sample data
 """
 
 import pandas as pd
@@ -26,39 +26,39 @@ import json
 
 def train_linear_model():
     print("=" * 70)
-    print("TRENOWANIE MODELU POMPY CIEPŁA - LINEAR REGRESSION")
+    print("TRAINING HEAT PUMP MODEL - LINEAR REGRESSION")
     print("=" * 70)
 
-    # katalog modelu
+    # model directory
     model_dir = "/config/pump"
     os.makedirs(model_dir, exist_ok=True)
 
-    # ścieżki
+    # paths
     csv_file = os.path.join(model_dir, "daily_temps.csv")
     model_file = os.path.join(model_dir, "heatpump_model_linear.pkl")
     metadata_file = os.path.join(model_dir, "model_metadata_linear.json")
 
-    # 1. Wczytanie danych
+    # 1. Load data
     if not os.path.exists(csv_file):
-        print(f"❌ BŁĄD: Plik {csv_file} nie istnieje!")
+        print(f"[ERROR] File {csv_file} does not exist!")
         return False
 
     df = pd.read_csv(csv_file)
     required_columns = ["avg_temp", "avg_temp_48h", "avg_humidity", "energy_consumption"]
     missing = [col for col in required_columns if col not in df.columns]
     if missing:
-        print(f"❌ BŁĄD: Brakujące kolumny: {missing}")
+        print(f"[ERROR] Missing columns: {missing}")
         return False
 
     df = df.dropna(subset=required_columns)
     if len(df) < 5:
-        print(f"❌ BŁĄD: Za mało danych ({len(df)} wierszy, minimum 5)")
+        print(f"[ERROR] Not enough data ({len(df)} rows, minimum 5)")
         return False
 
-    # Tworzenie cechy heating_degree
+    # Create the heating_degree feature
     df["heating_degree"] = np.maximum(0, 18 - df["avg_temp"])
 
-    # Przygotowanie danych
+    # Prepare data
     feature_names = ["avg_temp", "avg_temp_48h", "heating_degree", "avg_humidity"]
     X = df[feature_names]
     y = df["energy_consumption"]
@@ -66,12 +66,12 @@ def train_linear_model():
     test_size = 0.2 if len(df) >= 10 else 0.1
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=42)
 
-    # Trenowanie modelu
+    # Train the model
     model = LinearRegression()
     model.fit(X_train, y_train)
-    print(f"✓ Model wytrenowany!")
+    print(f"[OK] Model trained!")
 
-    # Ocena modelu
+    # Model evaluation
     y_pred_train = model.predict(X_train)
     y_pred_test = model.predict(X_test)
     mae_train = mean_absolute_error(y_train, y_pred_train)
@@ -80,18 +80,18 @@ def train_linear_model():
     r2_test = r2_score(y_test, y_pred_test)
     rmse_test = np.sqrt(mean_squared_error(y_test, y_pred_test))
 
-    print(f"\nWYNIKI MODELU:")
-    print(f"  Treningowy: MAE={mae_train:.2f}, R²={r2_train:.3f}")
-    print(f"  Testowy:    MAE={mae_test:.2f}, RMSE={rmse_test:.2f}, R²={r2_test:.3f}")
+    print(f"\nMODEL RESULTS:")
+    print(f"  Training: MAE={mae_train:.2f}, R2={r2_train:.3f}")
+    print(f"  Test:     MAE={mae_test:.2f}, RMSE={rmse_test:.2f}, R2={r2_test:.3f}")
 
-    # Wyciąganie współczynników
+    # Extract coefficients
     intercept = model.intercept_
     coef = model.coef_
-    print(f"\nPARAMETRY MODELU (Intercept i Coef):")
+    print(f"\nMODEL PARAMETERS (Intercept and Coef):")
     print(f"  Intercept: {intercept}")
     print(f"  Coef: {list(coef)}")
 
-    # Zapis modelu i metadanych
+    # Save the model and metadata
     joblib.dump(model, model_file)
     metadata = {
         "timestamp": datetime.now().isoformat(),
@@ -110,11 +110,11 @@ def train_linear_model():
     with open(metadata_file, "w") as f:
         json.dump(metadata, f, indent=2)
 
-    print(f"✓ Model zapisany: {model_file}")
-    print(f"✓ Metadane zapisane: {metadata_file}")
+    print(f"[OK] Model saved: {model_file}")
+    print(f"[OK] Metadata saved: {metadata_file}")
 
-    # Test predykcji
-    print(f"\nTEST PREDYKCJI:")
+    # Prediction test
+    print(f"\nPREDICTION TEST:")
     test_cases = [
         (0, -1, 18, 80),
         (-5, -6, 23, 85),
@@ -123,7 +123,7 @@ def train_linear_model():
     for temp, temp_48h, hd, hum in test_cases:
         X_test_case = pd.DataFrame([[temp, temp_48h, hd, hum]], columns=feature_names)
         pred = model.predict(X_test_case)[0]
-        print(f"temp={temp:4.1f}°C, temp_48h={temp_48h:4.1f}°C, hd={hd:4.1f}, hum={hum:3.0f}% → {pred:6.2f} kWh")
+        print(f"temp={temp:4.1f}C, temp_48h={temp_48h:4.1f}C, hd={hd:4.1f}, hum={hum:3.0f}% -> {pred:6.2f} kWh")
 
     return True
 
@@ -132,7 +132,7 @@ if __name__ == "__main__":
         success = train_linear_model()
         exit(0 if success else 1)
     except Exception as e:
-        print(f"\n❌ BŁĄD: {e}")
+        print(f"\n[ERROR] {e}")
         import traceback
         traceback.print_exc()
         exit(1)

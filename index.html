@@ -200,6 +200,60 @@
             color: var(--text-primary);
         }
 
+        /* HOVER TOOLTIPS ON MODEL TITLES */
+        .tooltip-trigger {
+            position: relative;
+            cursor: help;
+            width: fit-content;
+            border-bottom: 1px dashed var(--text-secondary);
+        }
+
+        .tooltip-trigger::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            top: calc(100% + 10px);
+            left: 0;
+            z-index: 20;
+            width: 260px;
+            background: rgba(20, 22, 33, 0.97);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+            padding: 0.75rem 1rem;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 400;
+            line-height: 1.4;
+            color: var(--text-secondary);
+            white-space: normal;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateY(-4px);
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            pointer-events: none;
+        }
+
+        .tooltip-trigger::before {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 14px;
+            z-index: 21;
+            border: 6px solid transparent;
+            border-bottom-color: rgba(255, 255, 255, 0.1);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s ease;
+            pointer-events: none;
+        }
+
+        .tooltip-trigger:hover::after,
+        .tooltip-trigger:hover::before {
+            opacity: 1;
+            visibility: visible;
+            transform: translateY(0);
+        }
+
         /* STATS TABLE / LIST */
         .info-list {
             display: flex;
@@ -802,7 +856,7 @@
                 <div class="card-header">
                     <div class="card-title-container">
                         <div class="card-icon rf"><i data-lucide="cpu"></i></div>
-                        <h2>Random Forest (RF)</h2>
+                        <h2 class="tooltip-trigger" data-tooltip="Good for larger datasets (30+ days of history). Learns non-linear patterns well, but cannot extrapolate: it predicts poorly for temperatures colder or warmer than anything seen in its training data.">Random Forest (RF)</h2>
                     </div>
                     <span class="status-badge" id="rf_status_pill" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;">
                         <span class="status-indicator idle" id="rf_indicator"></span>
@@ -815,6 +869,10 @@
                         <span class="info-value" id="rf_last_trained">-</span>
                     </div>
                     <div class="info-item">
+                        <span class="info-label"><i data-lucide="calendar-clock"></i> Next training</span>
+                        <span class="info-value" id="rf_next_training">-</span>
+                    </div>
+                    <div class="info-item">
                         <span class="info-label"><i data-lucide="trending-down"></i> Test error (MAE)</span>
                         <span class="info-value metric" id="rf_mae">-</span>
                     </div>
@@ -823,23 +881,20 @@
                         <span class="info-value metric" id="rf_r2">-</span>
                     </div>
                     <div class="info-item">
-                        <span class="info-label"><i data-lucide="sun"></i> Predicted today</span>
+                        <span class="info-label"><i data-lucide="sun"></i> Energu usage Predicted today</span>
                         <div style="display: flex; flex-direction: column; align-items: flex-end;">
                             <span class="info-value metric prediction-sensor-link" id="rf_pred_today" data-entity-id="sensor.heat_pump_pred_today_rf" title="Click to view history in Home Assistant">-</span>
                             <span class="prediction-sensor-updated" data-entity-id="sensor.heat_pump_pred_today_rf">-</span>
                         </div>
                     </div>
                     <div class="info-item">
-                        <span class="info-label"><i data-lucide="sunrise"></i> Predicted tomorrow</span>
+                        <span class="info-label"><i data-lucide="sunrise"></i> Energu usage Predicted tomorrow</span>
                         <div style="display: flex; flex-direction: column; align-items: flex-end;">
                             <span class="info-value metric prediction-sensor-link" id="rf_pred_tomorrow" data-entity-id="sensor.heat_pump_pred_tomorrow_rf" title="Click to view history in Home Assistant">-</span>
                             <span class="prediction-sensor-updated" data-entity-id="sensor.heat_pump_pred_tomorrow_rf">-</span>
                         </div>
                     </div>
                 </div>
-                <button class="btn btn-rf" id="btn_train_rf" onclick="trainModel('rf')">
-                    <i data-lucide="play"></i> Train RF model
-                </button>
             </div>
 
             <!-- MODEL 2: LINEAR REGRESSION -->
@@ -847,7 +902,7 @@
                 <div class="card-header">
                     <div class="card-title-container">
                         <div class="card-icon linear"><i data-lucide="activity"></i></div>
-                        <h2>Linear Regression</h2>
+                        <h2 class="tooltip-trigger" data-tooltip="Good for small datasets (fewer than 30 days of history). Simple and can extrapolate beyond the training range, but is generally less accurate than Random Forest once more data is available.">Linear Regression</h2>
                     </div>
                     <span class="status-badge" id="linear_status_pill" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;">
                         <span class="status-indicator idle" id="linear_indicator"></span>
@@ -860,6 +915,10 @@
                         <span class="info-value" id="linear_last_trained">-</span>
                     </div>
                     <div class="info-item">
+                        <span class="info-label"><i data-lucide="calendar-clock"></i> Next training</span>
+                        <span class="info-value" id="linear_next_training">-</span>
+                    </div>
+                    <div class="info-item">
                         <span class="info-label"><i data-lucide="trending-down"></i> Test error (MAE)</span>
                         <span class="info-value metric" id="linear_mae">-</span>
                     </div>
@@ -868,23 +927,20 @@
                         <span class="info-value metric" id="linear_r2">-</span>
                     </div>
                     <div class="info-item">
-                        <span class="info-label"><i data-lucide="sun"></i> Predicted today</span>
+                        <span class="info-label"><i data-lucide="sun"></i> Energy usage Predicted today</span>
                         <div style="display: flex; flex-direction: column; align-items: flex-end;">
                             <span class="info-value metric prediction-sensor-link" id="linear_pred_today" data-entity-id="sensor.heat_pump_pred_today_linear" title="Click to view history in Home Assistant">-</span>
                             <span class="prediction-sensor-updated" data-entity-id="sensor.heat_pump_pred_today_linear">-</span>
                         </div>
                     </div>
                     <div class="info-item">
-                        <span class="info-label"><i data-lucide="sunrise"></i> Predicted tomorrow</span>
+                        <span class="info-label"><i data-lucide="sunrise"></i> Energu usage Predicted tomorrow</span>
                         <div style="display: flex; flex-direction: column; align-items: flex-end;">
                             <span class="info-value metric prediction-sensor-link" id="linear_pred_tomorrow" data-entity-id="sensor.heat_pump_pred_tomorrow_linear" title="Click to view history in Home Assistant">-</span>
                             <span class="prediction-sensor-updated" data-entity-id="sensor.heat_pump_pred_tomorrow_linear">-</span>
                         </div>
                     </div>
                 </div>
-                <button class="btn btn-linear" id="btn_train_linear" onclick="trainModel('linear')">
-                    <i data-lucide="play"></i> Train Linear model
-                </button>
             </div>
 
             <!-- DATA COLLECTOR STATUS -->
@@ -909,6 +965,10 @@
                         <span class="info-value" id="log_status_val">-</span>
                     </div>
                 </div>
+                <div id="training_data_warning" style="display: none; align-items: flex-start; gap: 0.5rem; margin-bottom: 1rem; padding: 0.6rem 0.8rem; border-radius: 10px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35); color: var(--color-warning); font-size: 0.8rem; line-height: 1.4;">
+                    <i data-lucide="alert-triangle" style="flex-shrink: 0; width: 16px; height: 16px; margin-top: 0.1rem;"></i>
+                    <span id="training_data_warning_text"></span>
+                </div>
                 <div style="margin-bottom: 1rem;">
                     <div style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.3rem;">Sensors to log:</div>
                     <div class="sensor-chips" id="sensor_chips_list">
@@ -918,11 +978,8 @@
                         <div class="sensor-chip" id="chip_energy"><i data-lucide="zap"></i> Usage</div>
                     </div>
                 </div>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-                    <button class="btn btn-success" id="btn_log_now" onclick="logNow()">
-                        <i data-lucide="save"></i> Save now
-                    </button>
-                    <button class="btn" id="btn_browse_csv" onclick="openCsvModal()" style="border-color: rgba(99,102,241,0.3); color:#a5b4fc; background: rgba(99,102,241,0.08);">
+                <div>
+                    <button class="btn" id="btn_browse_csv" onclick="openCsvModal()" style="width: 100%; border-color: rgba(99,102,241,0.3); color:#a5b4fc; background: rgba(99,102,241,0.08);">
                         <i data-lucide="table"></i> Browse
                     </button>
                 </div>
@@ -1127,23 +1184,17 @@
 
         // Update model card UI
         function updateModelUI(modelType, data) {
-            const trainBtn = document.getElementById(`btn_train_${modelType}`);
             const statusText = document.getElementById(`${modelType}_status_text`);
             const indicator = document.getElementById(`${modelType}_indicator`);
             const lastTrained = document.getElementById(`${modelType}_last_trained`);
+            const nextTraining = document.getElementById(`${modelType}_next_training`);
             const mae = document.getElementById(`${modelType}_mae`);
             const r2 = document.getElementById(`${modelType}_r2`);
-            const label = modelType === 'rf' ? 'Train RF model' : 'Train Linear model';
 
             if (data.is_training) {
-                trainBtn.disabled = true;
-                trainBtn.innerHTML = `<span class="spinner" style="display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;"></span> Training...`;
                 statusText.innerText = "Training...";
                 indicator.className = "status-indicator warning";
             } else {
-                trainBtn.disabled = false;
-                trainBtn.innerHTML = `<i data-lucide="play"></i> ${label}`;
-
                 if (data.last_result === "SUCCESS") {
                     statusText.innerText = "Ready";
                     indicator.className = "status-indicator success";
@@ -1163,6 +1214,13 @@
                 lastTrained.innerText = date.toLocaleString('en-GB');
             } else {
                 lastTrained.innerText = "None";
+            }
+
+            if (data.next_training) {
+                const nextDate = new Date(data.next_training);
+                nextTraining.innerText = nextDate.toLocaleString('en-GB');
+            } else {
+                nextTraining.innerText = "Not scheduled";
             }
 
             if (data.model_metrics) {
@@ -1196,6 +1254,15 @@
 
                     // Sensor chips
                     updateSensorChips(data.configured_sensors);
+
+                    // Minimum training data warning
+                    const warningBox = document.getElementById('training_data_warning');
+                    if (data.training_data_warning) {
+                        document.getElementById('training_data_warning_text').innerText = data.training_data_warning;
+                        warningBox.style.display = "flex";
+                    } else {
+                        warningBox.style.display = "none";
+                    }
                 }
             } catch (error) {
                 console.error("Error fetching logger status:", error);
@@ -1322,43 +1389,6 @@
         function openSensorHistory(entityId) {
             const url = `${window.location.origin}/history?entity_id=${encodeURIComponent(entityId)}`;
             window.open(url, '_blank');
-        }
-
-        // Trigger manual model training
-        async function trainModel(modelType) {
-            try {
-                const url = modelType === 'rf' ? './train' : './trainlinear';
-                const res = await fetch(url, { method: 'POST' });
-                if (res.ok) {
-                    alert(`Started training the ${modelType.toUpperCase()} model! Training may take a few minutes.`);
-                    fetchStatus();
-                } else {
-                    const err = await res.json();
-                    alert(`Error: ${err.message}`);
-                }
-            } catch (error) {
-                alert(`Failed to send training request: ${error}`);
-            }
-        }
-
-        // Manually log data now
-        async function logNow() {
-            const btn = document.getElementById('btn_log_now');
-            btn.disabled = true;
-            try {
-                const res = await fetch('./log_now', { method: 'POST' });
-                const data = await res.json();
-                if (res.ok) {
-                    alert(`Data logged successfully! (${data.message})\nSaved: Temp=${data.data.avg_temp}°C, Usage=${data.data.energy_consumption} kWh.`);
-                    fetchLogStatus();
-                } else {
-                    alert(`Error logging data: ${data.message}`);
-                }
-            } catch (error) {
-                alert(`Failed to connect to the logging API: ${error}`);
-            } finally {
-                btn.disabled = false;
-            }
         }
 
         // Run prediction when Calculate button is clicked

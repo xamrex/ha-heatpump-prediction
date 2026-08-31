@@ -523,6 +523,25 @@ logging_status = {
 }
 logging_lock = threading.Lock()
 
+LOGGING_STATE_FILE = "/config/pump/logging_state.json"
+
+
+def get_logging_enabled():
+    """Whether automatic daily CSV logging is turned on. Defaults to True (enabled) if never toggled."""
+    if os.path.exists(LOGGING_STATE_FILE):
+        try:
+            with open(LOGGING_STATE_FILE, "r") as f:
+                return bool(json.load(f).get("enabled", True))
+        except Exception as e:
+            print(f"Error reading {LOGGING_STATE_FILE}: {e}")
+    return True
+
+
+def set_logging_enabled(enabled):
+    os.makedirs(os.path.dirname(LOGGING_STATE_FILE), exist_ok=True)
+    with open(LOGGING_STATE_FILE, "w") as f:
+        json.dump({"enabled": bool(enabled)}, f)
+
 def get_addon_options():
     if os.path.exists(OPTIONS_FILE):
         try:
@@ -1222,7 +1241,10 @@ def scheduler_thread():
                 logging_status["next_run"] = next_run_dt.strftime("%Y-%m-%d %H:%M:%S")
 
             if now.hour == 23 and now.minute == 59 and last_run != today_str:
-                if get_addon_options().get("energy_consumption_sensor"):
+                if not get_logging_enabled():
+                    with logging_lock:
+                        logging_status["last_status"] = "Skipped (data logging is turned off)"
+                elif get_addon_options().get("energy_consumption_sensor"):
                     print(f"Starting automatic daily data logging at {now}...")
                     row_data, action = log_daily_data(today_str)
 
@@ -1258,11 +1280,28 @@ def log_now_view():
             "message": str(e)
         }), 500
 
+@app.route('/log_toggle', methods=['POST'])
+def log_toggle_view():
+    try:
+        new_state = not get_logging_enabled()
+        set_logging_enabled(new_state)
+        return jsonify({
+            "status": "success",
+            "logging_enabled": new_state,
+            "message": f"Automatic data logging turned {'ON' if new_state else 'OFF'}"
+        }), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e)
+        }), 500
+
 @app.route('/log_status', methods=['GET'])
 def log_status_view():
     with logging_lock:
         status_copy = logging_status.copy()
 
+    status_copy["logging_enabled"] = get_logging_enabled()
     status_copy["configured_sensors"] = get_sensor_names()
 
     row_count = get_csv_row_count()

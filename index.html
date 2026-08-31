@@ -384,6 +384,17 @@
             box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
         }
 
+        .btn-off {
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: #f87171;
+        }
+        .btn-off:hover:not(:disabled) {
+            background: rgba(239, 68, 68, 0.25);
+            border-color: rgba(239, 68, 68, 0.5);
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+        }
+
         /* CALCULATOR */
         .calculator-layout {
             display: flex;
@@ -964,6 +975,10 @@
                         <span class="info-label"><i data-lucide="alert-circle"></i> Last status</span>
                         <span class="info-value" id="log_status_val">-</span>
                     </div>
+                    <div class="info-item">
+                        <span class="info-label"><i data-lucide="power"></i> Auto logging</span>
+                        <span class="info-value" id="logging_enabled_val">-</span>
+                    </div>
                 </div>
                 <div id="training_data_warning" style="display: none; align-items: flex-start; gap: 0.5rem; margin-bottom: 1rem; padding: 0.6rem 0.8rem; border-radius: 10px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.35); color: var(--color-warning); font-size: 0.8rem; line-height: 1.4;">
                     <i data-lucide="alert-triangle" style="flex-shrink: 0; width: 16px; height: 16px; margin-top: 0.1rem;"></i>
@@ -978,7 +993,10 @@
                         <div class="sensor-chip" id="chip_energy"><i data-lucide="zap"></i> Usage</div>
                     </div>
                 </div>
-                <div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem;">
+                    <button class="btn" id="btn_toggle_logging" onclick="toggleLogging()" style="width: 100%;">
+                        <i data-lucide="power"></i> <span id="logging_toggle_label">Logging</span>
+                    </button>
                     <button class="btn" id="btn_browse_csv" onclick="openCsvModal()" style="width: 100%; border-color: rgba(99,102,241,0.3); color:#a5b4fc; background: rgba(99,102,241,0.08);">
                         <i data-lucide="table"></i> Browse
                     </button>
@@ -1255,6 +1273,9 @@
                     // Sensor chips
                     updateSensorChips(data.configured_sensors);
 
+                    // Auto logging ON/OFF state
+                    updateLoggingToggleUI(data.logging_enabled);
+
                     // Minimum training data warning
                     const warningBox = document.getElementById('training_data_warning');
                     if (data.training_data_warning) {
@@ -1266,6 +1287,47 @@
                 }
             } catch (error) {
                 console.error("Error fetching logger status:", error);
+            }
+        }
+
+        // Reflect the auto-logging ON/OFF state in the toggle button and status row
+        function updateLoggingToggleUI(enabled) {
+            const btn = document.getElementById('btn_toggle_logging');
+            const label = document.getElementById('logging_toggle_label');
+            const statusEl = document.getElementById('logging_enabled_val');
+
+            if (enabled) {
+                btn.classList.remove('btn-off');
+                btn.classList.add('btn-success');
+                label.innerText = "Logging: ON";
+                statusEl.innerText = "ON";
+                statusEl.style.color = "var(--color-success)";
+            } else {
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-off');
+                label.innerText = "Logging: OFF";
+                statusEl.innerText = "OFF";
+                statusEl.style.color = "var(--color-error)";
+            }
+        }
+
+        // Toggle automatic daily CSV data logging on/off
+        async function toggleLogging() {
+            const btn = document.getElementById('btn_toggle_logging');
+            btn.disabled = true;
+            try {
+                const res = await fetch('./log_toggle', { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    updateLoggingToggleUI(data.logging_enabled);
+                } else {
+                    alert(`Failed to toggle data logging: ${data.message}`);
+                }
+            } catch (error) {
+                console.error("Error toggling data logging:", error);
+                alert("Failed to toggle data logging.");
+            } finally {
+                btn.disabled = false;
             }
         }
 

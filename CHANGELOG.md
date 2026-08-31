@@ -2,7 +2,7 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.37` (see `config.yaml`)
+## Current version: `4.38` (see `config.yaml`)
 
 ## 1. Add-on options reworked
 
@@ -141,6 +141,12 @@ Originally these sensors only refreshed hourly (`:01` scheduler tick, still kept
 
 - Bug/gap: `_validate_weather_forecast()` (§12) only checked that `weather_forecast` was a `weather.*` entity — it never checked whether that entity's hourly forecast actually contains humidity data. Some weather integrations only forecast temperature, which meant `sensor.heat_pump_pred_avg_humidity_today_actual_and_forcast`/`..._tomorrow_forecast` would silently have no forecast-side data despite the sensor itself passing validation.
 - Fix: `_validate_weather_forecast()` now calls `get_hourly_forecast(entity_id)` at startup validation time and fails with a configuration-error page if the call errors, the forecast is empty, or none of the returned hourly entries contain a `humidity` key. The error message and the `weather_forecast` option's description in `translations/en.yaml` both point users at the Met.no (Meteorologisk Institutt) integration as a weather source that does provide humidity forecasts.
+
+## 17. Added a manual ON/OFF toggle for automatic CSV data logging (v4.38)
+
+- `server.py`: new `LOGGING_STATE_FILE` (`/config/pump/logging_state.json`) with `get_logging_enabled()`/`set_logging_enabled()` helpers, persisting the flag across add-on restarts (defaults to `True`/enabled if never toggled, so existing installs keep logging as before). `scheduler_thread()`'s `23:59` auto-logging check now skips (`"Skipped (data logging is turned off)"`) when the flag is off. New `POST /log_toggle` endpoint flips the flag and returns the new state; `/log_status` now also reports `logging_enabled`.
+- `index.html`: Data Logging card gets a new "Auto logging" status row and a "Logging: ON/OFF" toggle button (`btn_toggle_logging`, next to "Browse") styled green when on (`.btn-success`) and red when off (new `.btn-off` CSS). `toggleLogging()` calls `/log_toggle`; `updateLoggingToggleUI()` keeps the button/status row in sync on load and on every status poll.
+- This only affects the automatic `23:59` daily write — the manual `/log_now` endpoint (no longer exposed in the UI, see #14) is unaffected and always logs immediately regardless of the toggle.
 
 ## Open / unverified items for next session
 

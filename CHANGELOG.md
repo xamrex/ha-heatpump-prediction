@@ -2,7 +2,7 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.38` (see `config.yaml`)
+## Current version: `4.39` (see `config.yaml`)
 
 ## 1. Add-on options reworked
 
@@ -147,6 +147,12 @@ Originally these sensors only refreshed hourly (`:01` scheduler tick, still kept
 - `server.py`: new `LOGGING_STATE_FILE` (`/config/pump/logging_state.json`) with `get_logging_enabled()`/`set_logging_enabled()` helpers, persisting the flag across add-on restarts (defaults to `True`/enabled if never toggled, so existing installs keep logging as before). `scheduler_thread()`'s `23:59` auto-logging check now skips (`"Skipped (data logging is turned off)"`) when the flag is off. New `POST /log_toggle` endpoint flips the flag and returns the new state; `/log_status` now also reports `logging_enabled`.
 - `index.html`: Data Logging card gets a new "Auto logging" status row and a "Logging: ON/OFF" toggle button (`btn_toggle_logging`, next to "Browse") styled green when on (`.btn-success`) and red when off (new `.btn-off` CSS). `toggleLogging()` calls `/log_toggle`; `updateLoggingToggleUI()` keeps the button/status row in sync on load and on every status poll.
 - This only affects the automatic `23:59` daily write — the manual `/log_now` endpoint (no longer exposed in the UI, see #14) is unaffected and always logs immediately regardless of the toggle.
+
+## 18. Published R² as HA sensors, matching the existing MAE sensors (v4.39)
+
+- Previously only MAE was exposed as an HA sensor (`sensor.rf_mae`/`sensor.lr_mae`, via `publish_mae_sensor()`); R² (`r2_test`) only existed in `model_metadata_rf.json`/`model_metadata_linear.json` and the dashboard's `/status`/`/statuslinear` responses, with no HA entity.
+- Added `publish_r2_sensor(entity_id, metadata_file, friendly_name)` (mirrors `publish_mae_sensor()`, reading `r2_test` instead of `mae_test_kwh`, no `unit_of_measurement` since R² is dimensionless) and two new entity IDs: `sensor.rf_r2`, `sensor.lr_r2`.
+- Published at the same three points the MAE sensors already are: right after each model finishes training (`run_training_rf()`/`run_training_linear()`), and once at add-on startup from any existing metadata (so the entities exist immediately after a restart, not just after the next training run).
 
 ## Open / unverified items for next session
 

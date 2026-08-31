@@ -41,6 +41,8 @@ status_lock = threading.Lock()
 
 RF_MAE_ENTITY_ID = "sensor.rf_mae"
 LR_MAE_ENTITY_ID = "sensor.lr_mae"
+RF_R2_ENTITY_ID = "sensor.rf_r2"
+LR_R2_ENTITY_ID = "sensor.lr_r2"
 RF_METADATA_FILE = "/config/pump/model_metadata_rf.json"
 LINEAR_METADATA_FILE = "/config/pump/model_metadata_linear.json"
 
@@ -243,6 +245,7 @@ def run_training_rf():
         with status_lock:
             training_status["rf"]["is_training"] = False
         publish_mae_sensor(RF_MAE_ENTITY_ID, RF_METADATA_FILE, "RF Model Test MAE")
+        publish_r2_sensor(RF_R2_ENTITY_ID, RF_METADATA_FILE, "RF Model Test R2")
 
 
 def run_training_linear():
@@ -274,6 +277,7 @@ def run_training_linear():
         with status_lock:
             training_status["linear"]["is_training"] = False
         publish_mae_sensor(LR_MAE_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test MAE")
+        publish_r2_sensor(LR_R2_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test R2")
 
 # =============================
 # Endpoints - info
@@ -646,6 +650,21 @@ def publish_mae_sensor(entity_id, metadata_file, friendly_name):
             return
         push_sensor_state(entity_id, round(mae, 4), attributes={
             "unit_of_measurement": "kWh",
+            "friendly_name": friendly_name,
+        })
+    except Exception as e:
+        print(f"Error publishing sensor {entity_id}: {e}")
+
+def publish_r2_sensor(entity_id, metadata_file, friendly_name):
+    if not os.path.exists(metadata_file):
+        return
+    try:
+        with open(metadata_file, "r") as f:
+            metadata = json.load(f)
+        r2 = metadata.get("r2_test")
+        if r2 is None:
+            return
+        push_sensor_state(entity_id, round(r2, 4), attributes={
             "friendly_name": friendly_name,
         })
     except Exception as e:
@@ -1443,6 +1462,8 @@ if __name__ == '__main__':
     # Publish HA sensors from any existing metadata so they're available right after a restart
     publish_mae_sensor(RF_MAE_ENTITY_ID, RF_METADATA_FILE, "RF Model Test MAE")
     publish_mae_sensor(LR_MAE_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test MAE")
+    publish_r2_sensor(RF_R2_ENTITY_ID, RF_METADATA_FILE, "RF Model Test R2")
+    publish_r2_sensor(LR_R2_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test R2")
 
     # Seed the weather/temperature computed sensors so they aren't empty until the next hourly update
     try:

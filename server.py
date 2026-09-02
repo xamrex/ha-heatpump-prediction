@@ -46,6 +46,18 @@ LR_R2_ENTITY_ID = "sensor.lr_r2"
 RF_METADATA_FILE = "/config/pump/model_metadata_rf.json"
 LINEAR_METADATA_FILE = "/config/pump/model_metadata_linear.json"
 
+RF_CHECK_SCRIPT = "/app/checkModel.py"
+LINEAR_CHECK_SCRIPT = "/app/checkModel_linear.py"
+RF_CHECK_METRICS_FILE = "/config/pump/dane.json"
+LINEAR_CHECK_METRICS_FILE = "/config/pump/dane_linear.json"
+
+RF_VERIFICATION_MAE_ENTITY_ID = "sensor.rf_verification_mae"
+RF_VERIFICATION_R2_ENTITY_ID = "sensor.rf_verification_r2"
+RF_VERIFICATION_MEAN_ERROR_ENTITY_ID = "sensor.rf_verification_mean_error"
+LR_VERIFICATION_MAE_ENTITY_ID = "sensor.lr_verification_mae"
+LR_VERIFICATION_R2_ENTITY_ID = "sensor.lr_verification_r2"
+LR_VERIFICATION_MEAN_ERROR_ENTITY_ID = "sensor.lr_verification_mean_error"
+
 # Daily automatic retraining schedule (replaces the manual Train buttons in the UI)
 AUTO_TRAIN_HOUR = 0
 AUTO_TRAIN_MINUTE = 10
@@ -246,6 +258,14 @@ def run_training_rf():
             training_status["rf"]["is_training"] = False
         publish_mae_sensor(RF_MAE_ENTITY_ID, RF_METADATA_FILE, "RF Model Test MAE")
         publish_r2_sensor(RF_R2_ENTITY_ID, RF_METADATA_FILE, "RF Model Test R2")
+        if run_check_model_script(RF_CHECK_SCRIPT):
+            publish_verification_sensors(
+                RF_CHECK_METRICS_FILE,
+                RF_VERIFICATION_MAE_ENTITY_ID,
+                RF_VERIFICATION_R2_ENTITY_ID,
+                RF_VERIFICATION_MEAN_ERROR_ENTITY_ID,
+                "RF Model"
+            )
 
 
 def run_training_linear():
@@ -278,6 +298,14 @@ def run_training_linear():
             training_status["linear"]["is_training"] = False
         publish_mae_sensor(LR_MAE_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test MAE")
         publish_r2_sensor(LR_R2_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test R2")
+        if run_check_model_script(LINEAR_CHECK_SCRIPT):
+            publish_verification_sensors(
+                LINEAR_CHECK_METRICS_FILE,
+                LR_VERIFICATION_MAE_ENTITY_ID,
+                LR_VERIFICATION_R2_ENTITY_ID,
+                LR_VERIFICATION_MEAN_ERROR_ENTITY_ID,
+                "Linear Model"
+            )
 
 # =============================
 # Endpoints - info
@@ -501,6 +529,28 @@ def show_results_linear_view():
         metrics_file="/config/pump/dane_linear.json"
     )
 
+def read_check_metrics(metrics_file):
+    """
+    Returns the existing checkModel metrics JSON without re-running the script
+    (the chart image endpoints above already regenerate it on every load).
+    """
+    if not os.path.exists(metrics_file):
+        return jsonify({"status": "error", "message": f"Metrics file does not exist: {metrics_file}"}), 404
+    try:
+        with open(metrics_file, "r") as f:
+            metrics_data = json.load(f)
+        return jsonify({"status": "success", "metrics": metrics_data})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/check_metrics', endpoint='check_metrics_rf')
+def check_metrics_rf_view():
+    return read_check_metrics(RF_CHECK_METRICS_FILE)
+
+@app.route('/check_metrics_linear', endpoint='check_metrics_linear')
+def check_metrics_linear_view():
+    return read_check_metrics(LINEAR_CHECK_METRICS_FILE)
+
 # =============================
 # Automatic data logging
 # =============================
@@ -669,6 +719,60 @@ def publish_r2_sensor(entity_id, metadata_file, friendly_name):
         })
     except Exception as e:
         print(f"Error publishing sensor {entity_id}: {e}")
+
+def run_check_model_script(script_path):
+    """
+    Runs a checkModel script (RF or Linear) to regenerate its verification chart
+    and metrics JSON (dane.json / dane_linear.json). Returns True on success.
+    """
+    try:
+        result = subprocess.run(
+            ["python3", script_path],
+            capture_output=True,
+            text=True,
+            timeout=300
+        )
+        if result.returncode != 0:
+            print(f"Error running {script_path}: {result.stderr}")
+            return False
+        return True
+    except Exception as e:
+        print(f"Error running {script_path}: {e}")
+        return False
+
+def publish_verification_sensors(metrics_file, mae_entity, r2_entity, mean_error_entity, friendly_prefix):
+    """
+    Publishes MAE/R2/mean error from a checkModel metrics file (dane.json / dane_linear.json)
+    as HA sensors. Unlike the MAE/R2 sensors from training metadata (which use a held-out test
+    split), these are computed by checkModel over the full CSV history.
+    """
+    if not os.path.exists(metrics_file):
+        return
+    try:
+        with open(metrics_file, "r") as f:
+            metrics = json.load(f)
+
+        mae = metrics.get("mae")
+        if mae is not None:
+            push_sensor_state(mae_entity, mae, attributes={
+                "unit_of_measurement": "kWh",
+                "friendly_name": f"{friendly_prefix} Verification MAE",
+            })
+
+        r2 = metrics.get("r2")
+        if r2 is not None:
+            push_sensor_state(r2_entity, r2, attributes={
+                "friendly_name": f"{friendly_prefix} Verification R2",
+            })
+
+        mean_error = metrics.get("mean_error")
+        if mean_error is not None:
+            push_sensor_state(mean_error_entity, mean_error, attributes={
+                "unit_of_measurement": "kWh",
+                "friendly_name": f"{friendly_prefix} Verification Mean Error",
+            })
+    except Exception as e:
+        print(f"Error publishing verification sensors from {metrics_file}: {e}")
 
 # =============================
 # Weather / temperature computed sensors
@@ -1464,6 +1568,20 @@ if __name__ == '__main__':
     publish_mae_sensor(LR_MAE_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test MAE")
     publish_r2_sensor(RF_R2_ENTITY_ID, RF_METADATA_FILE, "RF Model Test R2")
     publish_r2_sensor(LR_R2_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test R2")
+    publish_verification_sensors(
+        RF_CHECK_METRICS_FILE,
+        RF_VERIFICATION_MAE_ENTITY_ID,
+        RF_VERIFICATION_R2_ENTITY_ID,
+        RF_VERIFICATION_MEAN_ERROR_ENTITY_ID,
+        "RF Model"
+    )
+    publish_verification_sensors(
+        LINEAR_CHECK_METRICS_FILE,
+        LR_VERIFICATION_MAE_ENTITY_ID,
+        LR_VERIFICATION_R2_ENTITY_ID,
+        LR_VERIFICATION_MEAN_ERROR_ENTITY_ID,
+        "Linear Model"
+    )
 
     # Seed the weather/temperature computed sensors so they aren't empty until the next hourly update
     try:

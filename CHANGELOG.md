@@ -2,7 +2,7 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.39` (see `config.yaml`)
+## Current version: `4.40` (see `config.yaml`)
 
 ## 1. Add-on options reworked
 
@@ -153,6 +153,13 @@ Originally these sensors only refreshed hourly (`:01` scheduler tick, still kept
 - Previously only MAE was exposed as an HA sensor (`sensor.rf_mae`/`sensor.lr_mae`, via `publish_mae_sensor()`); R² (`r2_test`) only existed in `model_metadata_rf.json`/`model_metadata_linear.json` and the dashboard's `/status`/`/statuslinear` responses, with no HA entity.
 - Added `publish_r2_sensor(entity_id, metadata_file, friendly_name)` (mirrors `publish_mae_sensor()`, reading `r2_test` instead of `mae_test_kwh`, no `unit_of_measurement` since R² is dimensionless) and two new entity IDs: `sensor.rf_r2`, `sensor.lr_r2`.
 - Published at the same three points the MAE sensors already are: right after each model finishes training (`run_training_rf()`/`run_training_linear()`), and once at add-on startup from any existing metadata (so the entities exist immediately after a restart, not just after the next training run).
+
+## 19. Auto-regenerate verification chart+metrics after training; publish them as HA sensors and on the dashboard (v4.40)
+
+- **Auto-run checkModel after training**: `run_training_rf()`/`run_training_linear()` now call a new `run_check_model_script(script_path)` in their `finally:` block, right after training finishes — this runs `checkModel.py`/`checkModel_linear.py` via `subprocess.run`, which regenerates the predicted-vs-actual plot PNG and the `dane.json`/`dane_linear.json` metrics file. Previously this only happened lazily, whenever a user (or the dashboard's `<img>` tag) hit `/showpicresults`/`/showpicresultslinear`.
+- **New verification sensors**: `publish_verification_sensors(metrics_file, mae_entity, r2_entity, mean_error_entity, friendly_prefix)` reads `mae`/`r2`/`mean_error` from `dane.json`/`dane_linear.json` (checkModel's full-dataset, in-sample metrics — distinct from the existing `sensor.rf_mae`/`sensor.rf_r2`/etc., which come from the held-out test split in `model_metadata_rf.json`/`model_metadata_linear.json`) and pushes them to six new entities: `sensor.rf_verification_mae`, `sensor.rf_verification_r2`, `sensor.rf_verification_mean_error`, `sensor.lr_verification_mae`, `sensor.lr_verification_r2`, `sensor.lr_verification_mean_error`. Published after every training run and once at add-on startup (from whatever `dane.json`/`dane_linear.json` already exist), matching the existing MAE/R² sensor pattern (§18).
+- **New read-only endpoints**: `/check_metrics` and `/check_metrics_linear` return the current contents of `dane.json`/`dane_linear.json` as JSON, without re-running the check script (the chart image endpoints already regenerate it on every load).
+- **Dashboard**: the "Result Charts (Actual vs Forecast)" card now shows a metrics row (`.plot-metrics`, MAE / R² / Mean Error) below each chart, populated by a new `loadCheckMetrics(modelType)` JS function called from the chart `<img>`'s `onload` handler (fetches `/check_metrics` or `/check_metrics_linear`). `switchTab()` toggles the new metrics boxes (`#plot_rf_metrics`/`#plot_linear_metrics`) in sync with the existing plot containers; `handlePlotError()` resets the metric text to `-` if the chart fails to load.
 
 ## Open / unverified items for next session
 

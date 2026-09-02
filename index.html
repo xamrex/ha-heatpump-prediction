@@ -577,6 +577,37 @@
             opacity: 0.5;
         }
 
+        .plot-metrics {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.75rem;
+            padding: 0.6rem 1rem;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+        }
+
+        .plot-metric-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+
+        .plot-metric-label {
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+
+        .plot-metric-value {
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
         .tabs-header {
             display: flex;
             gap: 0.5rem;
@@ -1076,19 +1107,47 @@
 
                 <!-- RF Plot -->
                 <div id="plot_rf_container" class="plot-container">
-                    <img id="plot_rf_img" class="plot-image" alt="Random Forest Chart" src="" onload="this.classList.add('loaded')" onerror="handlePlotError('rf')">
+                    <img id="plot_rf_img" class="plot-image" alt="Random Forest Chart" src="" onload="this.classList.add('loaded'); loadCheckMetrics('rf');" onerror="handlePlotError('rf')">
                     <div id="plot_rf_placeholder" class="plot-placeholder">
                         <i data-lucide="image-off"></i>
                         <p>No RF chart generated yet.<br><small>Run model training to generate the verification chart.</small></p>
                     </div>
                 </div>
+                <div class="plot-metrics" id="plot_rf_metrics">
+                    <div class="plot-metric-item">
+                        <span class="plot-metric-label">MAE</span>
+                        <span class="plot-metric-value" id="rf_check_mae">-</span>
+                    </div>
+                    <div class="plot-metric-item">
+                        <span class="plot-metric-label">R²</span>
+                        <span class="plot-metric-value" id="rf_check_r2">-</span>
+                    </div>
+                    <div class="plot-metric-item">
+                        <span class="plot-metric-label">Mean Error</span>
+                        <span class="plot-metric-value" id="rf_check_mean_error">-</span>
+                    </div>
+                </div>
 
                 <!-- Linear Plot -->
                 <div id="plot_linear_container" class="plot-container" style="display: none;">
-                    <img id="plot_linear_img" class="plot-image" alt="Linear Regression Chart" src="" onload="this.classList.add('loaded')" onerror="handlePlotError('linear')">
+                    <img id="plot_linear_img" class="plot-image" alt="Linear Regression Chart" src="" onload="this.classList.add('loaded'); loadCheckMetrics('linear');" onerror="handlePlotError('linear')">
                     <div id="plot_linear_placeholder" class="plot-placeholder">
                         <i data-lucide="image-off"></i>
                         <p>No Linear Regression chart generated yet.<br><small>Run model training to generate the verification chart.</small></p>
+                    </div>
+                </div>
+                <div class="plot-metrics" id="plot_linear_metrics" style="display: none;">
+                    <div class="plot-metric-item">
+                        <span class="plot-metric-label">MAE</span>
+                        <span class="plot-metric-value" id="lr_check_mae">-</span>
+                    </div>
+                    <div class="plot-metric-item">
+                        <span class="plot-metric-label">R²</span>
+                        <span class="plot-metric-value" id="lr_check_r2">-</span>
+                    </div>
+                    <div class="plot-metric-item">
+                        <span class="plot-metric-label">Mean Error</span>
+                        <span class="plot-metric-value" id="lr_check_mean_error">-</span>
                     </div>
                 </div>
             </div>
@@ -1505,6 +1564,8 @@
 
             document.getElementById('plot_rf_container').style.display = tabId === 'rf' ? 'flex' : 'none';
             document.getElementById('plot_linear_container').style.display = tabId === 'linear' ? 'flex' : 'none';
+            document.getElementById('plot_rf_metrics').style.display = tabId === 'rf' ? 'flex' : 'none';
+            document.getElementById('plot_linear_metrics').style.display = tabId === 'linear' ? 'flex' : 'none';
 
             loadPlots();
         }
@@ -1536,6 +1597,35 @@
             img.style.display = 'none';
             img.classList.remove('loaded');
             placeholder.style.display = 'flex';
+
+            const prefix = modelType === 'rf' ? 'rf' : 'lr';
+            document.getElementById(`${prefix}_check_mae`).innerText = '-';
+            document.getElementById(`${prefix}_check_r2`).innerText = '-';
+            document.getElementById(`${prefix}_check_mean_error`).innerText = '-';
+        }
+
+        // Fetch MAE/R2/mean error computed by checkModel.py / checkModel_linear.py
+        // over the full dataset, shown below the corresponding chart
+        async function loadCheckMetrics(modelType) {
+            const endpoint = modelType === 'rf' ? './check_metrics' : './check_metrics_linear';
+            const prefix = modelType === 'rf' ? 'rf' : 'lr';
+
+            try {
+                const res = await fetch(endpoint);
+                const data = await res.json();
+                if (res.ok && data.status === 'success') {
+                    const m = data.metrics;
+                    document.getElementById(`${prefix}_check_mae`).innerText = `${m.mae} kWh`;
+                    document.getElementById(`${prefix}_check_r2`).innerText = `${m.r2}`;
+                    document.getElementById(`${prefix}_check_mean_error`).innerText = `${m.mean_error} kWh`;
+                } else {
+                    document.getElementById(`${prefix}_check_mae`).innerText = '-';
+                    document.getElementById(`${prefix}_check_r2`).innerText = '-';
+                    document.getElementById(`${prefix}_check_mean_error`).innerText = '-';
+                }
+            } catch (error) {
+                console.error(`Error loading check metrics for ${modelType}:`, error);
+            }
         }
 
         // Open the CSV data preview modal

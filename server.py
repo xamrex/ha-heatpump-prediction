@@ -58,6 +58,15 @@ LR_VERIFICATION_MAE_ENTITY_ID = "sensor.lr_verification_mae"
 LR_VERIFICATION_R2_ENTITY_ID = "sensor.lr_verification_r2"
 LR_VERIFICATION_MEAN_ERROR_ENTITY_ID = "sensor.lr_verification_mean_error"
 
+VERIFICATION_SENSOR_IDS = [
+    RF_VERIFICATION_MAE_ENTITY_ID,
+    RF_VERIFICATION_R2_ENTITY_ID,
+    RF_VERIFICATION_MEAN_ERROR_ENTITY_ID,
+    LR_VERIFICATION_MAE_ENTITY_ID,
+    LR_VERIFICATION_R2_ENTITY_ID,
+    LR_VERIFICATION_MEAN_ERROR_ENTITY_ID,
+]
+
 # Daily automatic retraining schedule (replaces the manual Train buttons in the UI)
 AUTO_TRAIN_HOUR = 0
 AUTO_TRAIN_MINUTE = 10
@@ -528,28 +537,6 @@ def show_results_linear_view():
         plot_path="/config/pump/plots/predicted_vs_actual_linear.png",
         metrics_file="/config/pump/dane_linear.json"
     )
-
-def read_check_metrics(metrics_file):
-    """
-    Returns the existing checkModel metrics JSON without re-running the script
-    (the chart image endpoints above already regenerate it on every load).
-    """
-    if not os.path.exists(metrics_file):
-        return jsonify({"status": "error", "message": f"Metrics file does not exist: {metrics_file}"}), 404
-    try:
-        with open(metrics_file, "r") as f:
-            metrics_data = json.load(f)
-        return jsonify({"status": "success", "metrics": metrics_data})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@app.route('/check_metrics', endpoint='check_metrics_rf')
-def check_metrics_rf_view():
-    return read_check_metrics(RF_CHECK_METRICS_FILE)
-
-@app.route('/check_metrics_linear', endpoint='check_metrics_linear')
-def check_metrics_linear_view():
-    return read_check_metrics(LINEAR_CHECK_METRICS_FILE)
 
 # =============================
 # Automatic data logging
@@ -1444,7 +1431,7 @@ def log_status_view():
 @app.route('/computed_sensors', methods=['GET'])
 def computed_sensors_view():
     sensors = []
-    for entity_id in list(COMPUTED_SENSOR_IDS.values()) + list(PREDICTION_SENSOR_IDS.values()):
+    for entity_id in list(COMPUTED_SENSOR_IDS.values()) + list(PREDICTION_SENSOR_IDS.values()) + VERIFICATION_SENSOR_IDS:
         entry = {"entity_id": entity_id}
         try:
             data = get_full_sensor_state(entity_id)

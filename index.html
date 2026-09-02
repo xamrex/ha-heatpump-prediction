@@ -1107,7 +1107,7 @@
 
                 <!-- RF Plot -->
                 <div id="plot_rf_container" class="plot-container">
-                    <img id="plot_rf_img" class="plot-image" alt="Random Forest Chart" src="" onload="this.classList.add('loaded'); loadCheckMetrics('rf');" onerror="handlePlotError('rf')">
+                    <img id="plot_rf_img" class="plot-image" alt="Random Forest Chart" src="" onload="this.classList.add('loaded')" onerror="handlePlotError('rf')">
                     <div id="plot_rf_placeholder" class="plot-placeholder">
                         <i data-lucide="image-off"></i>
                         <p>No RF chart generated yet.<br><small>Run model training to generate the verification chart.</small></p>
@@ -1116,21 +1116,24 @@
                 <div class="plot-metrics" id="plot_rf_metrics">
                     <div class="plot-metric-item">
                         <span class="plot-metric-label">MAE</span>
-                        <span class="plot-metric-value" id="rf_check_mae">-</span>
+                        <span class="plot-metric-value prediction-sensor-link" data-entity-id="sensor.rf_verification_mae" title="Click to view history in Home Assistant">-</span>
+                        <span class="prediction-sensor-updated" data-entity-id="sensor.rf_verification_mae">-</span>
                     </div>
                     <div class="plot-metric-item">
                         <span class="plot-metric-label">R²</span>
-                        <span class="plot-metric-value" id="rf_check_r2">-</span>
+                        <span class="plot-metric-value prediction-sensor-link" data-entity-id="sensor.rf_verification_r2" title="Click to view history in Home Assistant">-</span>
+                        <span class="prediction-sensor-updated" data-entity-id="sensor.rf_verification_r2">-</span>
                     </div>
                     <div class="plot-metric-item">
                         <span class="plot-metric-label">Mean Error</span>
-                        <span class="plot-metric-value" id="rf_check_mean_error">-</span>
+                        <span class="plot-metric-value prediction-sensor-link" data-entity-id="sensor.rf_verification_mean_error" title="Click to view history in Home Assistant">-</span>
+                        <span class="prediction-sensor-updated" data-entity-id="sensor.rf_verification_mean_error">-</span>
                     </div>
                 </div>
 
                 <!-- Linear Plot -->
                 <div id="plot_linear_container" class="plot-container" style="display: none;">
-                    <img id="plot_linear_img" class="plot-image" alt="Linear Regression Chart" src="" onload="this.classList.add('loaded'); loadCheckMetrics('linear');" onerror="handlePlotError('linear')">
+                    <img id="plot_linear_img" class="plot-image" alt="Linear Regression Chart" src="" onload="this.classList.add('loaded')" onerror="handlePlotError('linear')">
                     <div id="plot_linear_placeholder" class="plot-placeholder">
                         <i data-lucide="image-off"></i>
                         <p>No Linear Regression chart generated yet.<br><small>Run model training to generate the verification chart.</small></p>
@@ -1139,15 +1142,18 @@
                 <div class="plot-metrics" id="plot_linear_metrics" style="display: none;">
                     <div class="plot-metric-item">
                         <span class="plot-metric-label">MAE</span>
-                        <span class="plot-metric-value" id="lr_check_mae">-</span>
+                        <span class="plot-metric-value prediction-sensor-link" data-entity-id="sensor.lr_verification_mae" title="Click to view history in Home Assistant">-</span>
+                        <span class="prediction-sensor-updated" data-entity-id="sensor.lr_verification_mae">-</span>
                     </div>
                     <div class="plot-metric-item">
                         <span class="plot-metric-label">R²</span>
-                        <span class="plot-metric-value" id="lr_check_r2">-</span>
+                        <span class="plot-metric-value prediction-sensor-link" data-entity-id="sensor.lr_verification_r2" title="Click to view history in Home Assistant">-</span>
+                        <span class="prediction-sensor-updated" data-entity-id="sensor.lr_verification_r2">-</span>
                     </div>
                     <div class="plot-metric-item">
                         <span class="plot-metric-label">Mean Error</span>
-                        <span class="plot-metric-value" id="lr_check_mean_error">-</span>
+                        <span class="plot-metric-value prediction-sensor-link" data-entity-id="sensor.lr_verification_mean_error" title="Click to view history in Home Assistant">-</span>
+                        <span class="prediction-sensor-updated" data-entity-id="sensor.lr_verification_mean_error">-</span>
                     </div>
                 </div>
             </div>
@@ -1430,6 +1436,17 @@
             'sensor.heat_pump_pred_avg_humidity_tomorrow_forecast',
         ]);
 
+        // Verification metrics (checkModel.py / checkModel_linear.py), shown as clickable
+        // links under the Result Charts, same pattern as the prediction sensors above
+        const VERIFICATION_SENSOR_ENTITY_IDS = new Set([
+            'sensor.rf_verification_mae',
+            'sensor.rf_verification_r2',
+            'sensor.rf_verification_mean_error',
+            'sensor.lr_verification_mae',
+            'sensor.lr_verification_r2',
+            'sensor.lr_verification_mean_error',
+        ]);
+
         // Update one of the RF/Linear card's inline prediction values (plus its last-updated line)
         function updatePredictionSensorLink(sensor) {
             const lastUpdate = sensor.last_update ? new Date(sensor.last_update).toLocaleString('en-GB') : 'never';
@@ -1490,7 +1507,7 @@
                 tempGrid.innerHTML = '';
                 humidityGrid.innerHTML = '';
                 data.sensors.forEach(sensor => {
-                    if (PREDICTION_SENSOR_ENTITY_IDS.has(sensor.entity_id)) {
+                    if (PREDICTION_SENSOR_ENTITY_IDS.has(sensor.entity_id) || VERIFICATION_SENSOR_ENTITY_IDS.has(sensor.entity_id)) {
                         updatePredictionSensorLink(sensor);
                     } else if (TEMPERATURE_SENSOR_ENTITY_IDS.has(sensor.entity_id)) {
                         tempGrid.appendChild(buildComputedSensorCard(sensor));
@@ -1597,35 +1614,6 @@
             img.style.display = 'none';
             img.classList.remove('loaded');
             placeholder.style.display = 'flex';
-
-            const prefix = modelType === 'rf' ? 'rf' : 'lr';
-            document.getElementById(`${prefix}_check_mae`).innerText = '-';
-            document.getElementById(`${prefix}_check_r2`).innerText = '-';
-            document.getElementById(`${prefix}_check_mean_error`).innerText = '-';
-        }
-
-        // Fetch MAE/R2/mean error computed by checkModel.py / checkModel_linear.py
-        // over the full dataset, shown below the corresponding chart
-        async function loadCheckMetrics(modelType) {
-            const endpoint = modelType === 'rf' ? './check_metrics' : './check_metrics_linear';
-            const prefix = modelType === 'rf' ? 'rf' : 'lr';
-
-            try {
-                const res = await fetch(endpoint);
-                const data = await res.json();
-                if (res.ok && data.status === 'success') {
-                    const m = data.metrics;
-                    document.getElementById(`${prefix}_check_mae`).innerText = `${m.mae} kWh`;
-                    document.getElementById(`${prefix}_check_r2`).innerText = `${m.r2}`;
-                    document.getElementById(`${prefix}_check_mean_error`).innerText = `${m.mean_error} kWh`;
-                } else {
-                    document.getElementById(`${prefix}_check_mae`).innerText = '-';
-                    document.getElementById(`${prefix}_check_r2`).innerText = '-';
-                    document.getElementById(`${prefix}_check_mean_error`).innerText = '-';
-                }
-            } catch (error) {
-                console.error(`Error loading check metrics for ${modelType}:`, error);
-            }
         }
 
         // Open the CSV data preview modal

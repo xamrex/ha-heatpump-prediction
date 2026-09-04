@@ -1,7 +1,7 @@
 name: "Heat Pump prediction"
-version: "4.44"
+version: "4.45"
 slug: "pompa_addon"
-description: "It predicts heat pump energy consumption. Go to website homeassistant.local:8234 for more information"
+description: "Trains and runs Random Forest / Linear Regression models to predict your heat pump's daily energy consumption from temperature, humidity, and weather forecast history. Before starting the add-on, open its Configuration tab and set the required sensor entities."
 arch:
   - aarch64
   - amd64

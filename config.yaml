@@ -1,5 +1,5 @@
 name: "Heat Pump prediction"
-version: "4.43"
+version: "4.44"
 slug: "pompa_addon"
 description: "It predicts heat pump energy consumption. Go to website homeassistant.local:8234 for more information"
 arch:

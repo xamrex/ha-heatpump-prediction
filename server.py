@@ -476,64 +476,44 @@ def prediction_linear_view():
 # =============================
 # Endpoints - verification (chart)
 # =============================
-def run_check_model(script_path, plot_path, metrics_file):
+def get_check_model_results(plot_path, metrics_file):
     """
-    Runs the checkModel script (linear or RF) and returns either the chart or a JSON with metrics.
+    Returns the existing checkModel verification chart or metrics, read straight from disk.
+    Does NOT regenerate them — the chart/metrics are (re)generated only after training
+    completes (see run_check_model_script), since re-running checkModel on every page
+    view/tab switch would be wasteful and pointless when nothing has changed.
     """
     show_plot = request.args.get("show_plot", "0") == "1"
-    env = os.environ.copy()
-    env["SHOW_PLOT"] = "1" if show_plot else "0"
 
-    try:
-        result = subprocess.run(
-            ["python3", script_path],
-            capture_output=True,
-            text=True,
-            timeout=300,
-            env=env
-        )
-        if result.returncode != 0:
+    if show_plot:
+        if os.path.exists(plot_path):
+            return send_file(plot_path, mimetype="image/png")
+        else:
             return jsonify({
                 "status": "error",
-                "message": "Script execution failed",
-                "stderr": result.stderr,
-                "stdout": result.stdout
-            }), 500
-
-        if show_plot:
-            if os.path.exists(plot_path):
-                return send_file(plot_path, mimetype="image/png")
-            else:
-                return jsonify({
-                    "status": "error",
-                    "message": f"Chart not found: {plot_path}"
-                }), 404
+                "message": f"Chart not found: {plot_path}"
+            }), 404
+    else:
+        if os.path.exists(metrics_file):
+            with open(metrics_file, "r") as f:
+                metrics_data = json.load(f)
+            return jsonify({"status": "success", "metrics": metrics_data})
         else:
-            if os.path.exists(metrics_file):
-                with open(metrics_file, "r") as f:
-                    metrics_data = json.load(f)
-                return jsonify({"status": "success", "metrics": metrics_data})
-            else:
-                return jsonify({
-                    "status": "error",
-                    "message": f"Metrics file does not exist: {metrics_file}"
-                }), 404
-
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+            return jsonify({
+                "status": "error",
+                "message": f"Metrics file does not exist: {metrics_file}"
+            }), 404
 
 @app.route('/showpicresults', endpoint='show_rf')
 def show_results_rf_view():
-    return run_check_model(
-        script_path="/app/checkModel.py",
+    return get_check_model_results(
         plot_path="/config/pump/plots/predicted_vs_actual_rf.png",
         metrics_file="/config/pump/dane.json"
     )
 
 @app.route('/showpicresultslinear', endpoint='show_linear')
 def show_results_linear_view():
-    return run_check_model(
-        script_path="/app/checkModel_linear.py",
+    return get_check_model_results(
         plot_path="/config/pump/plots/predicted_vs_actual_linear.png",
         metrics_file="/config/pump/dane_linear.json"
     )
@@ -1502,11 +1482,11 @@ ENDPOINT_INFO = {
         "usage": "/predictionlinear?avg_temp=16.5&avg_temp_48h=15.12&avg_humidity=12",
     },
     'show_rf': {
-        "description": "RF model verification chart or metrics (parameter: show_plot=1 for the PNG chart)",
+        "description": "RF model verification chart or metrics, generated after training (parameter: show_plot=1 for the PNG chart)",
         "usage": "/showpicresults?show_plot=1",
     },
     'show_linear': {
-        "description": "Linear model verification chart or metrics (parameter: show_plot=1 for the PNG chart)",
+        "description": "Linear model verification chart or metrics, generated after training (parameter: show_plot=1 for the PNG chart)",
         "usage": "/showpicresultslinear?show_plot=1",
     },
     'log_now_view': {

@@ -2,7 +2,7 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.43` (see `config.yaml`)
+## Current version: `4.44` (see `config.yaml`)
 
 ## 1. Add-on options reworked
 
@@ -170,6 +170,11 @@ Originally these sensors only refreshed hourly (`:01` scheduler tick, still kept
 - `sensor.rf_verification_mean_error` and `sensor.lr_verification_mean_error` (§19) used to publish the signed average residual (`mean_error` from `dane.json`/`dane_linear.json`, in kWh). They now publish `mape` (Mean Absolute Percentage Error) from the same files instead, with `unit_of_measurement` changed from `kWh` to `%` and the friendly name updated to "... Verification Mean Error (%)".
 - The entity IDs themselves were kept unchanged (still `sensor.rf_verification_mean_error` / `sensor.lr_verification_mean_error`) to avoid creating duplicate/orphaned HA entities — only the underlying value, unit, and dashboard label ("Mean Error %") changed. In `server.py` the backing constants were renamed to `RF_VERIFICATION_MAPE_ENTITY_ID` / `LR_VERIFICATION_MAPE_ENTITY_ID` for clarity, but the entity_id string values are identical to before.
 - No changes needed in `checkModel.py`/`checkModel_linear.py` — both already computed and wrote `mape` to their metrics JSON.
+
+## 22. Stopped regenerating verification charts/metrics on every dashboard view or tab switch (v4.44)
+
+- Bug: `/showpicresults` and `/showpicresultslinear` re-ran `checkModel.py`/`checkModel_linear.py` via `subprocess.run` on EVERY call — including the `loadPlots()` call fired on initial page load and on every RF/Linear tab switch (`index.html`). Since `loadPlots()` always loads both images regardless of which tab is active, switching tabs back and forth triggered a full re-run of both scripts each time, refitting predictions over the whole CSV history and rewriting `dane.json`/`dane_linear.json` and the PNGs for no reason — the data hadn't changed since the last training run.
+- Fix: `/showpicresults`/`/showpicresultslinear` (`get_check_model_results()`, formerly `run_check_model()`) now just read the existing plot PNG / metrics JSON from disk — no subprocess call. The charts and metrics are only (re)generated once, right after training completes, via the existing `run_check_model_script()` call in `run_training_rf()`/`run_training_linear()` (§19).
 
 ## Open / unverified items for next session
 

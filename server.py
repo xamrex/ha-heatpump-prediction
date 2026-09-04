@@ -53,18 +53,18 @@ LINEAR_CHECK_METRICS_FILE = "/config/pump/dane_linear.json"
 
 RF_VERIFICATION_MAE_ENTITY_ID = "sensor.rf_verification_mae"
 RF_VERIFICATION_R2_ENTITY_ID = "sensor.rf_verification_r2"
-RF_VERIFICATION_MEAN_ERROR_ENTITY_ID = "sensor.rf_verification_mean_error"
+RF_VERIFICATION_MAPE_ENTITY_ID = "sensor.rf_verification_mean_error"
 LR_VERIFICATION_MAE_ENTITY_ID = "sensor.lr_verification_mae"
 LR_VERIFICATION_R2_ENTITY_ID = "sensor.lr_verification_r2"
-LR_VERIFICATION_MEAN_ERROR_ENTITY_ID = "sensor.lr_verification_mean_error"
+LR_VERIFICATION_MAPE_ENTITY_ID = "sensor.lr_verification_mean_error"
 
 VERIFICATION_SENSOR_IDS = [
     RF_VERIFICATION_MAE_ENTITY_ID,
     RF_VERIFICATION_R2_ENTITY_ID,
-    RF_VERIFICATION_MEAN_ERROR_ENTITY_ID,
+    RF_VERIFICATION_MAPE_ENTITY_ID,
     LR_VERIFICATION_MAE_ENTITY_ID,
     LR_VERIFICATION_R2_ENTITY_ID,
-    LR_VERIFICATION_MEAN_ERROR_ENTITY_ID,
+    LR_VERIFICATION_MAPE_ENTITY_ID,
 ]
 
 # Daily automatic retraining schedule (replaces the manual Train buttons in the UI)
@@ -272,7 +272,7 @@ def run_training_rf():
                 RF_CHECK_METRICS_FILE,
                 RF_VERIFICATION_MAE_ENTITY_ID,
                 RF_VERIFICATION_R2_ENTITY_ID,
-                RF_VERIFICATION_MEAN_ERROR_ENTITY_ID,
+                RF_VERIFICATION_MAPE_ENTITY_ID,
                 "RF Model"
             )
 
@@ -312,7 +312,7 @@ def run_training_linear():
                 LINEAR_CHECK_METRICS_FILE,
                 LR_VERIFICATION_MAE_ENTITY_ID,
                 LR_VERIFICATION_R2_ENTITY_ID,
-                LR_VERIFICATION_MEAN_ERROR_ENTITY_ID,
+                LR_VERIFICATION_MAPE_ENTITY_ID,
                 "Linear Model"
             )
 
@@ -727,9 +727,9 @@ def run_check_model_script(script_path):
         print(f"Error running {script_path}: {e}")
         return False
 
-def publish_verification_sensors(metrics_file, mae_entity, r2_entity, mean_error_entity, friendly_prefix):
+def publish_verification_sensors(metrics_file, mae_entity, r2_entity, mape_entity, friendly_prefix):
     """
-    Publishes MAE/R2/mean error from a checkModel metrics file (dane.json / dane_linear.json)
+    Publishes MAE/R2/MAPE from a checkModel metrics file (dane.json / dane_linear.json)
     as HA sensors. Unlike the MAE/R2 sensors from training metadata (which use a held-out test
     split), these are computed by checkModel over the full CSV history.
     """
@@ -752,11 +752,11 @@ def publish_verification_sensors(metrics_file, mae_entity, r2_entity, mean_error
                 "friendly_name": f"{friendly_prefix} Verification R2",
             })
 
-        mean_error = metrics.get("mean_error")
-        if mean_error is not None:
-            push_sensor_state(mean_error_entity, mean_error, attributes={
-                "unit_of_measurement": "kWh",
-                "friendly_name": f"{friendly_prefix} Verification Mean Error",
+        mape = metrics.get("mape")
+        if mape is not None:
+            push_sensor_state(mape_entity, mape, attributes={
+                "unit_of_measurement": "%",
+                "friendly_name": f"{friendly_prefix} Verification Mean Error (%)",
             })
     except Exception as e:
         print(f"Error publishing verification sensors from {metrics_file}: {e}")
@@ -1560,14 +1560,14 @@ if __name__ == '__main__':
         RF_CHECK_METRICS_FILE,
         RF_VERIFICATION_MAE_ENTITY_ID,
         RF_VERIFICATION_R2_ENTITY_ID,
-        RF_VERIFICATION_MEAN_ERROR_ENTITY_ID,
+        RF_VERIFICATION_MAPE_ENTITY_ID,
         "RF Model"
     )
     publish_verification_sensors(
         LINEAR_CHECK_METRICS_FILE,
         LR_VERIFICATION_MAE_ENTITY_ID,
         LR_VERIFICATION_R2_ENTITY_ID,
-        LR_VERIFICATION_MEAN_ERROR_ENTITY_ID,
+        LR_VERIFICATION_MAPE_ENTITY_ID,
         "Linear Model"
     )
 

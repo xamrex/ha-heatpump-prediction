@@ -2,7 +2,7 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.42` (see `config.yaml`)
+## Current version: `4.43` (see `config.yaml`)
 
 ## 1. Add-on options reworked
 
@@ -164,6 +164,12 @@ Originally these sensors only refreshed hourly (`:01` scheduler tick, still kept
 
 - Bug: `sensor.heat_pump_pred_today_rf/_linear` and `..._tomorrow_rf/_linear` (§3) were only recomputed in two places: once at add-on startup, and whenever `temp_sensor`/`humidity_sensor` actually changed state (via the WebSocket listener, §4). The scheduler's hourly `:01` tick (`scheduler_thread()`) only called `run_weather_sensor_updates()` — refreshing the today/tomorrow temp+humidity blend sensors and the 48h average — but never followed up with `update_prediction_sensors()`. So if the weather forecast changed within the hour but the raw `temp_sensor`/`humidity_sensor` didn't, the blend sensors would update at `:01` while the prediction sensors silently kept showing a stale value until the next real sensor change.
 - Fix: `scheduler_thread()`'s hourly branch now calls `update_prediction_sensors()` right after `run_weather_sensor_updates()`, matching the pair already used in the WebSocket listener and at startup.
+
+## 21. Switched RF/Linear "Verification Mean Error" sensors to MAPE (%) (v4.43)
+
+- `sensor.rf_verification_mean_error` and `sensor.lr_verification_mean_error` (§19) used to publish the signed average residual (`mean_error` from `dane.json`/`dane_linear.json`, in kWh). They now publish `mape` (Mean Absolute Percentage Error) from the same files instead, with `unit_of_measurement` changed from `kWh` to `%` and the friendly name updated to "... Verification Mean Error (%)".
+- The entity IDs themselves were kept unchanged (still `sensor.rf_verification_mean_error` / `sensor.lr_verification_mean_error`) to avoid creating duplicate/orphaned HA entities — only the underlying value, unit, and dashboard label ("Mean Error %") changed. In `server.py` the backing constants were renamed to `RF_VERIFICATION_MAPE_ENTITY_ID` / `LR_VERIFICATION_MAPE_ENTITY_ID` for clarity, but the entity_id string values are identical to before.
+- No changes needed in `checkModel.py`/`checkModel_linear.py` — both already computed and wrote `mape` to their metrics JSON.
 
 ## Open / unverified items for next session
 

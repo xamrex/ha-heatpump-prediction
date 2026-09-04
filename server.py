@@ -1323,6 +1323,7 @@ def scheduler_thread():
             if now.minute == 1 and _last_weather_update_hour != hour_key:
                 print(f"Running hourly weather/temperature sensor updates at {now}...")
                 run_weather_sensor_updates()
+                update_prediction_sensors()
                 _last_weather_update_hour = hour_key
 
             if now.hour == AUTO_TRAIN_HOUR and now.minute == AUTO_TRAIN_MINUTE:

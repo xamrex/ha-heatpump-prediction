@@ -2,7 +2,7 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.40` (see `config.yaml`)
+## Current version: `4.42` (see `config.yaml`)
 
 ## 1. Add-on options reworked
 
@@ -159,6 +159,11 @@ Originally these sensors only refreshed hourly (`:01` scheduler tick, still kept
 - **Auto-run checkModel after training**: `run_training_rf()`/`run_training_linear()` now call a new `run_check_model_script(script_path)` in their `finally:` block, right after training finishes — this runs `checkModel.py`/`checkModel_linear.py` via `subprocess.run`, which regenerates the predicted-vs-actual plot PNG and the `dane.json`/`dane_linear.json` metrics file. Previously this only happened lazily, whenever a user (or the dashboard's `<img>` tag) hit `/showpicresults`/`/showpicresultslinear`.
 - **New verification sensors**: `publish_verification_sensors(metrics_file, mae_entity, r2_entity, mean_error_entity, friendly_prefix)` reads `mae`/`r2`/`mean_error` from `dane.json`/`dane_linear.json` (checkModel's full-dataset, in-sample metrics — distinct from the existing `sensor.rf_mae`/`sensor.rf_r2`/etc., which come from the held-out test split in `model_metadata_rf.json`/`model_metadata_linear.json`) and pushes them to six new entities: `sensor.rf_verification_mae`, `sensor.rf_verification_r2`, `sensor.rf_verification_mean_error`, `sensor.lr_verification_mae`, `sensor.lr_verification_r2`, `sensor.lr_verification_mean_error`. Published after every training run and once at add-on startup (from whatever `dane.json`/`dane_linear.json` already exist), matching the existing MAE/R² sensor pattern (§18).
 - **Dashboard, wired the same way as the prediction sensors**: the "Result Charts (Actual vs Forecast)" card now shows a metrics row (`.plot-metrics`, MAE / R² / Mean Error) below each chart. These six values are added to `VERIFICATION_SENSOR_IDS` in `server.py` and included in the existing `/computed_sensors` endpoint (which queries live HA state via `get_full_sensor_state`), exactly like the `sensor.heat_pump_pred_*_rf`/`_linear` prediction sensors. On the frontend, a new `VERIFICATION_SENSOR_ENTITY_IDS` Set routes them through the existing `updatePredictionSensorLink()` helper in `fetchComputedSensors()` — so each value is rendered as a clickable `.prediction-sensor-link` span with an "Updated: ..." caption, and clicking it opens the entity's native history in Home Assistant (`openSensorHistory()`), same as clicking a predicted-energy value. `switchTab()` toggles the metrics boxes (`#plot_rf_metrics`/`#plot_linear_metrics`) in sync with the existing plot containers. (An earlier version of this feature used dedicated `/check_metrics` file-reading endpoints instead — replaced by this HA-sensor-based approach so the values are genuine HA entities with history, not just page-local text.)
+
+## 20. Fixed hourly tick not refreshing the energy prediction sensors (v4.42)
+
+- Bug: `sensor.heat_pump_pred_today_rf/_linear` and `..._tomorrow_rf/_linear` (§3) were only recomputed in two places: once at add-on startup, and whenever `temp_sensor`/`humidity_sensor` actually changed state (via the WebSocket listener, §4). The scheduler's hourly `:01` tick (`scheduler_thread()`) only called `run_weather_sensor_updates()` — refreshing the today/tomorrow temp+humidity blend sensors and the 48h average — but never followed up with `update_prediction_sensors()`. So if the weather forecast changed within the hour but the raw `temp_sensor`/`humidity_sensor` didn't, the blend sensors would update at `:01` while the prediction sensors silently kept showing a stale value until the next real sensor change.
+- Fix: `scheduler_thread()`'s hourly branch now calls `update_prediction_sensors()` right after `run_weather_sensor_updates()`, matching the pair already used in the WebSocket listener and at startup.
 
 ## Open / unverified items for next session
 

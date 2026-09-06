@@ -23,6 +23,13 @@ import joblib
 import os
 from datetime import datetime
 import json
+import math
+
+def safe_round(value, ndigits):
+    """Rounds a metric, returning None instead of NaN/Inf (r2_score can be NaN with tiny test sets)."""
+    if value is None or (isinstance(value, float) and not math.isfinite(value)):
+        return None
+    return round(value, ndigits)
 
 def train_linear_model():
     print("=" * 70)
@@ -96,11 +103,11 @@ def train_linear_model():
     metadata = {
         "timestamp": datetime.now().isoformat(),
         "model_type": "LinearRegression",
-        "mae_train_kwh": round(mae_train, 2),
-        "mae_test_kwh": round(mae_test, 2),
-        "rmse_test_kwh": round(rmse_test, 2),
-        "r2_train": round(r2_train, 3),
-        "r2_test": round(r2_test, 3),
+        "mae_train_kwh": safe_round(mae_train, 2),
+        "mae_test_kwh": safe_round(mae_test, 2),
+        "rmse_test_kwh": safe_round(rmse_test, 2),
+        "r2_train": safe_round(r2_train, 3),
+        "r2_test": safe_round(r2_test, 3),
         "training_samples": len(X_train),
         "test_samples": len(X_test),
         "features": feature_names,

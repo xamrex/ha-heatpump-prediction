@@ -10,8 +10,9 @@ import threading
 import os
 import pandas as pd
 import joblib
-import json 
+import json
 import csv
+import math
 import time
 import requests
 from datetime import datetime, timedelta, timezone
@@ -370,6 +371,16 @@ def train_linear_view():
 # =============================
 # Endpoints - status
 # =============================
+def clean_metric(value):
+    """
+    Converts NaN/Inf to None so jsonify() never emits a literal NaN token
+    (r2_score can be NaN with tiny test sets; bare NaN is invalid JSON and
+    breaks JSON.parse() in the browser).
+    """
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
+
 @app.route('/status')
 def status_rf_view():
     # safe copy of the status (thread-safe)
@@ -387,8 +398,8 @@ def status_rf_view():
 
             response["last_model_trained"] = metadata.get("timestamp")
             response["model_metrics"] = {
-                "mae_test_kwh": metadata.get("mae_test_kwh"),
-                "r2_test": metadata.get("r2_test")
+                "mae_test_kwh": clean_metric(metadata.get("mae_test_kwh")),
+                "r2_test": clean_metric(metadata.get("r2_test"))
             }
 
         except Exception as e:
@@ -418,8 +429,8 @@ def status_linear_view():
 
             response["last_model_trained"] = metadata.get("timestamp")
             response["model_metrics"] = {
-                "mae_test_kwh": metadata.get("mae_test_kwh"),
-                "r2_test": metadata.get("r2_test")
+                "mae_test_kwh": clean_metric(metadata.get("mae_test_kwh")),
+                "r2_test": clean_metric(metadata.get("r2_test"))
             }
 
         except Exception as e:
@@ -662,7 +673,7 @@ def publish_mae_sensor(entity_id, metadata_file, friendly_name):
     try:
         with open(metadata_file, "r") as f:
             metadata = json.load(f)
-        mae = metadata.get("mae_test_kwh")
+        mae = clean_metric(metadata.get("mae_test_kwh"))
         if mae is None:
             return
         push_sensor_state(entity_id, round(mae, 4), attributes={
@@ -678,7 +689,7 @@ def publish_r2_sensor(entity_id, metadata_file, friendly_name):
     try:
         with open(metadata_file, "r") as f:
             metadata = json.load(f)
-        r2 = metadata.get("r2_test")
+        r2 = clean_metric(metadata.get("r2_test"))
         if r2 is None:
             return
         push_sensor_state(entity_id, round(r2, 4), attributes={
@@ -719,20 +730,20 @@ def publish_verification_sensors(metrics_file, mae_entity, r2_entity, mape_entit
         with open(metrics_file, "r") as f:
             metrics = json.load(f)
 
-        mae = metrics.get("mae")
+        mae = clean_metric(metrics.get("mae"))
         if mae is not None:
             push_sensor_state(mae_entity, mae, attributes={
                 "unit_of_measurement": "kWh",
                 "friendly_name": f"{friendly_prefix} Verification MAE",
             })
 
-        r2 = metrics.get("r2")
+        r2 = clean_metric(metrics.get("r2"))
         if r2 is not None:
             push_sensor_state(r2_entity, r2, attributes={
                 "friendly_name": f"{friendly_prefix} Verification R2",
             })
 
-        mape = metrics.get("mape")
+        mape = clean_metric(metrics.get("mape"))
         if mape is not None:
             push_sensor_state(mape_entity, mape, attributes={
                 "unit_of_measurement": "%",

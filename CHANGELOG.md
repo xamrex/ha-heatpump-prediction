@@ -2,7 +2,7 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.45` (see `config.yaml`)
+## Current version: `4.47` (see `config.yaml`)
 
 ## 1. Add-on options reworked
 
@@ -179,6 +179,15 @@ Originally these sensors only refreshed hourly (`:01` scheduler tick, still kept
 ## 23. Rewrote the add-on store description (v4.45)
 
 - `config.yaml`'s `description` (shown in the Supervisor add-on store before install) was a generic placeholder pointing to the ingress URL. Replaced it with a description of what the add-on actually does (trains/runs RF + Linear Regression models to predict daily heat pump energy consumption from temperature/humidity/weather history) and a note that the required sensor entities must be set in the add-on's Configuration tab before starting it.
+
+## 24. Fixed "Server connection error" caused by invalid `NaN` in `/status`/`/statuslinear` JSON (v4.46)
+
+- Bug: with a small training set, `test_size` can leave only 1-2 samples in the test split, and `r2_score()` returns `NaN` for a degenerate test set. `train_model.py`/`train_model_linear.py` wrote that `NaN` straight into `model_metadata_rf.json`/`model_metadata_linear.json` via `json.dump()` — Python allows a bare `NaN` token by default, but it is invalid per the JSON spec. When `/status`/`/statuslinear` echoed that value back via `jsonify()`, the browser's `fetch(...).json()` in `fetchStatus()` threw a parse error, which the page's `catch` block surfaced as "Server connection error" — even though the add-on itself was running fine.
+- Fix: added a `safe_round()` helper in both trainers that stores `null` instead of `NaN`/`Inf` for any rounded metric. Also added `clean_metric()` in `server.py` and applied it wherever `mae_test_kwh`/`r2_test` (in `/status`, `/statuslinear`, `publish_mae_sensor`, `publish_r2_sensor`) and `mae`/`r2`/`mape` (in `publish_verification_sensors`) are read from a metrics/metadata file, so an already-written `NaN` in an existing file is also sanitized to `null` on read without needing to retrain.
+
+## 25. Documented the required sensors and a forecast/humidity tip in the add-on description (v4.47)
+
+- `config.yaml`'s `description` now lists the 4 required sensors (current temperature, heat pump daily energy consumption, forecast temperature, current humidity) and adds a tip: install the Meteorologisk institutt (Met.no) integration to get a forecast temperature sensor, and create a template helper such as `{{ state_attr('weather.<your_weather_entity>', 'humidity') }}` to derive a current humidity sensor from a weather entity that only exposes humidity as an attribute.
 
 ## Open / unverified items for next session
 

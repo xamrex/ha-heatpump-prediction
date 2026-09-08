@@ -5,6 +5,7 @@ Handles the non-linear (Random Forest) and linear (Linear Regression) models.
 """
 
 from flask import Flask, jsonify, send_file, request, Response
+from waitress import serve
 import subprocess
 import threading
 import os
@@ -1584,4 +1585,6 @@ if __name__ == '__main__':
     t_ws.daemon = True
     t_ws.start()
 
-    app.run(host='0.0.0.0', port=8000, debug=False)
+    # Waitress instead of Flask's built-in dev server: multi-threaded, single-process,
+    # so the in-memory training_status / scheduler_thread / websocket listener stay singletons.
+    serve(app, host='0.0.0.0', port=8000)

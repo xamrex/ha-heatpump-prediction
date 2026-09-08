@@ -2,7 +2,7 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.48` (see `config.yaml`)
+## Current version: `4.49` (see `config.yaml`)
 
 ## 1. Add-on options reworked
 
@@ -193,6 +193,12 @@ Originally these sensors only refreshed hourly (`:01` scheduler tick, still kept
 
 - Both `checkModel.py` and `checkModel_linear.py`'s "Create the chart" step now render a 2-panel figure (`plt.subplots(2, 1, ...)`) instead of a single plot: Panel 1 is the original energy-over-time chart (predicted vs. actual, unchanged); Panel 2 plots predicted (and actual, if available) energy consumption against `avg_temp`, sorted by temperature, with a thin gray dotted line connecting each actual/predicted pair to visualize the per-point error — making it easy to see where a model over/under-predicts across the temperature range, not just across time.
 - Applies to both `predicted_vs_actual_rf*.png` and `predicted_vs_actual_linear*.png` (both the dated and the "latest" copy Flask serves).
+
+## 27. Switched from Flask's dev server to Waitress (v4.49)
+
+- `app.run(host='0.0.0.0', port=8000, debug=False)` used Flask/Werkzeug's built-in development server, which logs "WARNING: This is a development server. Do not use it in a production deployment." on every start and isn't built to handle concurrent load robustly.
+- Fix: added `waitress` to the Dockerfile's `pip install` line and swapped the startup call for `serve(app, host='0.0.0.0', port=8000)` from `from waitress import serve`.
+- Chose Waitress over Gunicorn deliberately: this add-on keeps process-wide state in memory (`training_status` dict, the singleton `scheduler_thread()` 30s loop, the singleton `watched_sensor_ws_listener()` WebSocket connection). Waitress runs as one multi-threaded process, so that assumption still holds. Gunicorn's default multi-worker model would spawn multiple independent copies of the scheduler and the WebSocket listener (each retraining/logging on its own), so it would need to be pinned to a single worker to be safe — Waitress avoids that footgun entirely.
 
 ## Open / unverified items for next session
 

@@ -116,29 +116,57 @@ print(f"[OK] Metrics saved to file: {metrics_file}")
 # 7. Create the chart
 # =============================
 if show_plot:
-    plt.figure(figsize=(10, 5))
-    plt.plot(df["date"], df["predicted_energy"], label="Prediction (kWh)", marker='o')
-    if "energy_consumption" in df.columns:
-        plt.plot(df["date"], df["energy_consumption"], label="Actual consumption (kWh)", marker='x')
+    has_actual = "energy_consumption" in df.columns
 
-    plt.xticks(rotation=45)
-    plt.xlabel("Date")
-    plt.ylabel("Energy consumption [kWh]")
-    plt.title("Heat pump energy consumption - actual vs prediction (Linear Regression)")
+    fig, (ax_time, ax_temp) = plt.subplots(2, 1, figsize=(10, 9))
+
+    # ---- Panel 1: energy over time (unchanged, original chart) ----
+    ax_time.plot(df["date"], df["predicted_energy"], label="Prediction (kWh)",
+                 marker='o', color="tab:blue")
+    if has_actual:
+        ax_time.plot(df["date"], df["energy_consumption"], label="Actual consumption (kWh)",
+                     marker='x', color="tab:red")
+
+    ax_time.set_xlabel("Date")
+    ax_time.set_ylabel("Energy consumption [kWh]")
+    ax_time.set_title("Heat pump energy consumption - actual vs prediction (Linear Regression)")
+    ax_time.tick_params(axis='x', rotation=45)
+    ax_time.legend(loc="best")
+
+    # ---- Panel 2: energy vs temperature (how the model behaves per temperature) ----
+    order = df["avg_temp"].argsort()
+    temp_sorted = df["avg_temp"].values[order]
+    pred_sorted = df["predicted_energy"].values[order]
+
+    ax_temp.plot(temp_sorted, pred_sorted, marker='o', color="tab:blue",
+                 label="Prediction (kWh)")
+    if has_actual:
+        actual_sorted = df["energy_consumption"].values[order]
+        ax_temp.plot(temp_sorted, actual_sorted, marker='x', color="tab:red",
+                     label="Actual consumption (kWh)")
+        # draw a vertical line between actual and predicted for each point to show the error
+        for t, a, p in zip(temp_sorted, actual_sorted, pred_sorted):
+            ax_temp.plot([t, t], [a, p], color="gray", linestyle=":", linewidth=1)
+
+    ax_temp.set_xlabel("Avg. temperature [C]")
+    ax_temp.set_ylabel("Energy consumption [kWh]")
+    ax_temp.set_title("Model behavior as a function of temperature")
+    ax_temp.legend(loc="best")
+    ax_temp.grid(True, alpha=0.3)
 
     if mae is not None and r2 is not None:
         title_text = f"MAE: {mae:.2f} kWh | R2: {r2:.3f}"
         if mape is not None:
             title_text += f" | Mean error %: {mape:.2f}%"
-        plt.suptitle(title_text, y=0.92, fontsize=10)
+        fig.suptitle(title_text, y=0.98, fontsize=10)
 
-    plt.legend()
-    plt.tight_layout()
+    fig.tight_layout(rect=[0, 0, 1, 0.96])
 
     # Save the chart
-    plt.savefig(plot_file, dpi=150)
+    fig.savefig(plot_file, dpi=150)
     print(f"[OK] Chart saved to file: {plot_file}")
 
     # File always available for Flask
     latest_plot_file = os.path.join(plots_dir, "predicted_vs_actual_linear.png")
-    plt.savefig(latest_plot_file, dpi=150)
+    fig.savefig(latest_plot_file, dpi=150)
+    plt.close(fig)

@@ -1,5 +1,5 @@
 name: "Heat Pump prediction"
-version: "4.47"
+version: "4.48"
 slug: "pompa_addon"
 description: >-
   Trains and runs Random Forest / Linear Regression models to predict your

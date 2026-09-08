@@ -2,7 +2,7 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.47` (see `config.yaml`)
+## Current version: `4.48` (see `config.yaml`)
 
 ## 1. Add-on options reworked
 
@@ -188,6 +188,11 @@ Originally these sensors only refreshed hourly (`:01` scheduler tick, still kept
 ## 25. Documented the required sensors and a forecast/humidity tip in the add-on description (v4.47)
 
 - `config.yaml`'s `description` now lists the 4 required sensors (current temperature, heat pump daily energy consumption, forecast temperature, current humidity) and adds a tip: install the Meteorologisk institutt (Met.no) integration to get a forecast temperature sensor, and create a template helper such as `{{ state_attr('weather.<your_weather_entity>', 'humidity') }}` to derive a current humidity sensor from a weather entity that only exposes humidity as an attribute.
+
+## 26. Added a second chart panel showing model behavior vs. temperature (v4.48)
+
+- Both `checkModel.py` and `checkModel_linear.py`'s "Create the chart" step now render a 2-panel figure (`plt.subplots(2, 1, ...)`) instead of a single plot: Panel 1 is the original energy-over-time chart (predicted vs. actual, unchanged); Panel 2 plots predicted (and actual, if available) energy consumption against `avg_temp`, sorted by temperature, with a thin gray dotted line connecting each actual/predicted pair to visualize the per-point error — making it easy to see where a model over/under-predicts across the temperature range, not just across time.
+- Applies to both `predicted_vs_actual_rf*.png` and `predicted_vs_actual_linear*.png` (both the dated and the "latest" copy Flask serves).
 
 ## Open / unverified items for next session
 

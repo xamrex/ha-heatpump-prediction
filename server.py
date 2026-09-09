@@ -679,7 +679,9 @@ def publish_mae_sensor(entity_id, metadata_file, friendly_name):
             return
         push_sensor_state(entity_id, round(mae, 4), attributes={
             "unit_of_measurement": "kWh",
+            "state_class": "measurement",
             "friendly_name": friendly_name,
+            "last_update": datetime.now().isoformat(),
         })
     except Exception as e:
         print(f"Error publishing sensor {entity_id}: {e}")
@@ -694,7 +696,9 @@ def publish_r2_sensor(entity_id, metadata_file, friendly_name):
         if r2 is None:
             return
         push_sensor_state(entity_id, round(r2, 4), attributes={
+            "state_class": "measurement",
             "friendly_name": friendly_name,
+            "last_update": datetime.now().isoformat(),
         })
     except Exception as e:
         print(f"Error publishing sensor {entity_id}: {e}")
@@ -731,24 +735,32 @@ def publish_verification_sensors(metrics_file, mae_entity, r2_entity, mape_entit
         with open(metrics_file, "r") as f:
             metrics = json.load(f)
 
+        now_iso = datetime.now().isoformat()
+
         mae = clean_metric(metrics.get("mae"))
         if mae is not None:
             push_sensor_state(mae_entity, mae, attributes={
                 "unit_of_measurement": "kWh",
+                "state_class": "measurement",
                 "friendly_name": f"{friendly_prefix} Verification MAE",
+                "last_update": now_iso,
             })
 
         r2 = clean_metric(metrics.get("r2"))
         if r2 is not None:
             push_sensor_state(r2_entity, r2, attributes={
+                "state_class": "measurement",
                 "friendly_name": f"{friendly_prefix} Verification R2",
+                "last_update": now_iso,
             })
 
         mape = clean_metric(metrics.get("mape"))
         if mape is not None:
             push_sensor_state(mape_entity, mape, attributes={
                 "unit_of_measurement": "%",
+                "state_class": "measurement",
                 "friendly_name": f"{friendly_prefix} Verification Mean Error (%)",
+                "last_update": now_iso,
             })
     except Exception as e:
         print(f"Error publishing verification sensors from {metrics_file}: {e}")

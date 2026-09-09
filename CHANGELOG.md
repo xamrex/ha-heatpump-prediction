@@ -2,7 +2,26 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.49` (see `config.yaml`)
+## Current version: `4.52` (see `config.yaml`)
+
+## 30. Bigger result chart images + click-to-zoom lightbox
+
+The RF/Linear verification chart images in "Result Charts" were small and fixed at `max-height: 380px`. Increased `.plot-container`/`.plot-image` to `max-height: 640px` (min-height 380px) so they render noticeably larger by default.
+
+Also added a click-to-zoom lightbox: clicking a loaded chart image (`onclick="openImageModal(...)"` on `#plot_rf_img`/`#plot_linear_img`) opens a full-screen overlay (`#image_modal_overlay`, new `.image-modal-overlay` CSS) showing the image at full size, closable via the X button, clicking the backdrop, or Escape (added to the existing keydown handler alongside the CSV modal). `.plot-image` also got `cursor: zoom-in` and a subtle hover scale to hint it's clickable.
+
+## 29. Tooltip on "Fit (R²)" when R² can't be computed yet
+
+When `data.model_metrics.r2_test` comes back `null` (fewer than 10 rows in `daily_temps.csv` — see item 28's threshold), the "Fit (R²)" label in both the Random Forest and Linear Regression cards now gets the same hover-tooltip styling used on the model title tooltips (`.tooltip-trigger` / `data-tooltip`), explaining that at least 10 measurement days are needed. The tooltip is added/removed dynamically in `updateModelUI()` in `index.html` based on whether `r2_test` is null, so it disappears again once enough data is logged and R² starts reporting a real value.
+
+## 28. Fixed R2 sensors showing as text + missing `last_update` on verification sensors
+
+Two bugs reported after inspecting sensor attributes in HA:
+
+- `sensor.rf_r2` / `sensor.lr_r2` / `sensor.rf_verification_r2` / `sensor.lr_verification_r2` had no `unit_of_measurement` and no `state_class`, so HA's frontend rendered the state as plain text instead of a number. Fixed by adding `"state_class": "measurement"` to these sensors (R2 has no unit, but `state_class` alone is enough for HA to treat it as numeric) — same fix applied to `publish_r2_sensor()` and the `r2` branch of `publish_verification_sensors()`.
+- `publish_mae_sensor()`, `publish_r2_sensor()`, and `publish_verification_sensors()` never set a `last_update` attribute, so `/computed_sensors` always returned `last_update: null` for the MAE/R2/mean-error sensors (unlike the weather-blend sensors, which already set it). Fixed by adding `"last_update": datetime.now().isoformat()` to all of their pushed attributes.
+
+Also added `"state_class": "measurement"` to the MAE/mean-error sensors for consistency with the other numeric sensors in the add-on.
 
 ## 1. Add-on options reworked
 

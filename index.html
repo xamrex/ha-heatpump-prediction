@@ -534,7 +534,7 @@
         /* PLOTS CARD */
         .plot-container {
             width: 100%;
-            min-height: 250px;
+            min-height: 380px;
             background: rgba(0, 0, 0, 0.2);
             border-radius: 12px;
             border: 1px solid rgba(255, 255, 255, 0.05);
@@ -549,11 +549,16 @@
         .plot-image {
             width: 100%;
             height: auto;
-            max-height: 380px;
+            max-height: 640px;
             object-fit: contain;
             display: block;
             opacity: 0;
-            transition: opacity 0.5s ease;
+            transition: opacity 0.5s ease, transform 0.15s ease;
+            cursor: zoom-in;
+        }
+
+        .plot-image.loaded:hover {
+            transform: scale(1.01);
         }
 
         .plot-image.loaded {
@@ -653,6 +658,39 @@
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
         }
+
+        /* IMAGE LIGHTBOX MODAL */
+        .image-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(6px);
+            z-index: 1100;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        .image-modal-overlay.open { display: flex; }
+        .image-modal-overlay img {
+            max-width: 100%;
+            max-height: 100%;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+        }
+        .image-modal-close {
+            position: fixed;
+            top: 1.5rem;
+            right: 1.5rem;
+            background: rgba(20, 22, 33, 0.9);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: var(--text-primary);
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 8px;
+            transition: color 0.2s;
+        }
+        .image-modal-close:hover { color: var(--color-error); }
 
         /* MODAL */
         .modal-overlay {
@@ -919,7 +957,7 @@
                         <span class="info-value metric" id="rf_mae">-</span>
                     </div>
                     <div class="info-item">
-                        <span class="info-label"><i data-lucide="percent"></i> Fit (R²)</span>
+                        <span class="info-label" id="rf_r2_label"><i data-lucide="percent"></i> Fit (R²)</span>
                         <span class="info-value metric" id="rf_r2">-</span>
                     </div>
                     <div class="info-item">
@@ -965,7 +1003,7 @@
                         <span class="info-value metric" id="linear_mae">-</span>
                     </div>
                     <div class="info-item">
-                        <span class="info-label"><i data-lucide="percent"></i> Fit (R²)</span>
+                        <span class="info-label" id="linear_r2_label"><i data-lucide="percent"></i> Fit (R²)</span>
                         <span class="info-value metric" id="linear_r2">-</span>
                     </div>
                     <div class="info-item">
@@ -1107,7 +1145,7 @@
 
                 <!-- RF Plot -->
                 <div id="plot_rf_container" class="plot-container">
-                    <img id="plot_rf_img" class="plot-image" alt="Random Forest Chart" src="" onload="this.classList.add('loaded')" onerror="handlePlotError('rf')">
+                    <img id="plot_rf_img" class="plot-image" alt="Random Forest Chart" src="" onload="this.classList.add('loaded')" onerror="handlePlotError('rf')" onclick="if(this.classList.contains('loaded')) openImageModal(this.src, this.alt)">
                     <div id="plot_rf_placeholder" class="plot-placeholder">
                         <i data-lucide="image-off"></i>
                         <p>No RF chart generated yet.<br><small>Run model training to generate the verification chart.</small></p>
@@ -1133,7 +1171,7 @@
 
                 <!-- Linear Plot -->
                 <div id="plot_linear_container" class="plot-container" style="display: none;">
-                    <img id="plot_linear_img" class="plot-image" alt="Linear Regression Chart" src="" onload="this.classList.add('loaded')" onerror="handlePlotError('linear')">
+                    <img id="plot_linear_img" class="plot-image" alt="Linear Regression Chart" src="" onload="this.classList.add('loaded')" onerror="handlePlotError('linear')" onclick="if(this.classList.contains('loaded')) openImageModal(this.src, this.alt)">
                     <div id="plot_linear_placeholder" class="plot-placeholder">
                         <i data-lucide="image-off"></i>
                         <p>No Linear Regression chart generated yet.<br><small>Run model training to generate the verification chart.</small></p>
@@ -1196,6 +1234,12 @@
                 <p class="modal-meta">Loading data...</p>
             </div>
         </div>
+    </div>
+
+    <!-- IMAGE LIGHTBOX MODAL -->
+    <div class="image-modal-overlay" id="image_modal_overlay" onclick="if(event.target===this) closeImageModal()">
+        <button class="image-modal-close" onclick="closeImageModal()"><i data-lucide="x"></i></button>
+        <img id="image_modal_img" src="" alt="">
     </div>
 
     <!-- SCRIPTS -->
@@ -1273,6 +1317,7 @@
             const nextTraining = document.getElementById(`${modelType}_next_training`);
             const mae = document.getElementById(`${modelType}_mae`);
             const r2 = document.getElementById(`${modelType}_r2`);
+            const r2Label = document.getElementById(`${modelType}_r2_label`);
 
             if (data.is_training) {
                 statusText.innerText = "Training...";
@@ -1308,10 +1353,21 @@
 
             if (data.model_metrics) {
                 mae.innerText = `${data.model_metrics.mae_test_kwh} kWh`;
-                r2.innerText = `${data.model_metrics.r2_test}`;
+
+                if (data.model_metrics.r2_test === null || data.model_metrics.r2_test === undefined) {
+                    r2.innerText = "-";
+                    r2Label.classList.add("tooltip-trigger");
+                    r2Label.setAttribute("data-tooltip", "Not enough data to calculate R². At least 10 measurement days in daily_temps.csv are needed for the test split to contain 2+ samples.");
+                } else {
+                    r2.innerText = `${data.model_metrics.r2_test}`;
+                    r2Label.classList.remove("tooltip-trigger");
+                    r2Label.removeAttribute("data-tooltip");
+                }
             } else {
                 mae.innerText = "-";
                 r2.innerText = "-";
+                r2Label.classList.remove("tooltip-trigger");
+                r2Label.removeAttribute("data-tooltip");
             }
         }
 
@@ -1659,8 +1715,24 @@
             document.getElementById('csv_modal_overlay').classList.remove('open');
         }
 
+        // Image lightbox (result charts)
+        function openImageModal(src, alt) {
+            const overlay = document.getElementById('image_modal_overlay');
+            const img = document.getElementById('image_modal_img');
+            img.src = src;
+            img.alt = alt || '';
+            overlay.classList.add('open');
+        }
+
+        function closeImageModal() {
+            document.getElementById('image_modal_overlay').classList.remove('open');
+        }
+
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') closeCsvModal();
+            if (e.key === 'Escape') {
+                closeCsvModal();
+                closeImageModal();
+            }
         });
     </script>
 </body>

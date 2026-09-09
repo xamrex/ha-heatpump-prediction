@@ -2,7 +2,11 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.53` (see `config.yaml`)
+## Current version: `4.54` (see `config.yaml`)
+
+## 32. Added the add-on `url` field (config.yaml)
+
+The Supervisor Info tab shows a "Visit Heat Pump prediction page for more details." line with the add-on name linked to whatever `url` is set in `config.yaml` — since that field was never set, the link went nowhere. Set `url` to the `DOCS.md` file on GitHub so it now actually opens the full documentation.
 
 ## 31. Shortened the add-on `description` (config.yaml)
 

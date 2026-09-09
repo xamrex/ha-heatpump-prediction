@@ -1,6 +1,7 @@
 name: "Heat Pump prediction"
-version: "4.53"
+version: "4.54"
 slug: "pompa_addon"
+url: "https://github.com/xamrex/ha-heatpump-prediction/blob/master/heatpumptrain/DOCS.md"
 description: >-
   Trains and runs Random Forest / Linear Regression models to predict your
   heat pump's daily energy consumption from temperature, humidity, and

@@ -2,7 +2,11 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.52` (see `config.yaml`)
+## Current version: `4.53` (see `config.yaml`)
+
+## 31. Shortened the add-on `description` (config.yaml)
+
+The Supervisor Info tab renders `description` as a single plain-text block — the multi-paragraph version (with a numbered sensor list and a tip) was folding into one run-on paragraph with no visible line breaks. Shortened it to a short summary and pointed users to the Documentation tab (`DOCS.md`, which is rendered as proper Markdown) for the full sensor setup guide and tips.
 
 ## 30. Bigger result chart images + click-to-zoom lightbox
 

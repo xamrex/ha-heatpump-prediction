@@ -1,28 +1,12 @@
 name: "Heat Pump prediction"
-version: "4.52"
+version: "4.53"
 slug: "pompa_addon"
 description: >-
   Trains and runs Random Forest / Linear Regression models to predict your
   heat pump's daily energy consumption from temperature, humidity, and
   weather forecast history. Before starting the add-on, open its
-  Configuration tab and set the required sensor entities.
-
-
-  Required sensors:
-
-  1. Current temperature sensor
-
-  2. Heat pump daily energy consumption sensor
-
-  3. Forecast temperature sensor
-
-  4. Current humidity sensor
-
-
-  TIP: You can add the Meteorologisk institutt (Met.no) integration to get a
-  forecast temperature sensor. For current humidity, you can create a
-  template helper using {{ state_attr('weather.<your_weather_entity>',
-  'humidity') }} to read the current humidity from your weather entity.
+  Configuration tab and set the four required sensor entities. See the
+  Documentation tab for the full sensor setup guide and tips.
 arch:
   - aarch64
   - amd64

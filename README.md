@@ -9,9 +9,9 @@ forecast temperature/humidity, live energy predictions, and model accuracy
 metrics) and publishes them back to Home Assistant so they can be used on
 dashboards or in automations.
 
-See **[DOCS.md](DOCS.md)** for full documentation: required sensor
-configuration, every sensor the add-on creates, how the predictions and
-metrics are computed, and the API endpoints it exposes.
+See **[heatpumptrain/DOCS.md](heatpumptrain/DOCS.md)** for full documentation:
+required sensor configuration, every sensor the add-on creates, how the
+predictions and metrics are computed, and the API endpoints it exposes.
 
 ## Features
 
@@ -27,16 +27,19 @@ metrics are computed, and the API endpoints it exposes.
 ## Installation
 
 1. Add this repository to Home Assistant: **Settings → Add-ons → Add-on
-   Store → ⋮ → Repositories**, then add this repo's URL.
+   Store → ⋮ → Repositories**, then add this repo's URL
+   (`https://github.com/xamrex/ha-heatpump-prediction`).
 2. Install **Heat Pump prediction** from the add-on store and start it.
 3. Open the add-on's **Configuration** tab and set the four required sensor
-   entities (see [DOCS.md](DOCS.md#11-configure-the-required-sensors)).
+   entities (see [DOCS.md](heatpumptrain/DOCS.md#11-configure-the-required-sensors)).
 4. Open the add-on's web UI (ingress panel) to monitor training and
    predictions.
 
 ## Development
 
 ```bash
+cd heatpumptrain
+
 # Build the add-on image
 docker build -t heatpumptrain .
 
@@ -53,12 +56,15 @@ python3 checkModel_linear.py    # Linear evaluation + plot
 
 ## Repository layout
 
+This is a Home Assistant [add-on repository](https://developers.home-assistant.io/docs/add-ons/repository);
+the add-on itself lives in its own subfolder as required by Supervisor.
+
 | Path | Purpose |
 |---|---|
-| `config.yaml` | Home Assistant add-on manifest |
-| `Dockerfile` | Add-on container image |
-| `server.py` | Flask/waitress server — dashboard, training orchestration, prediction/status endpoints, sensor scheduling |
-| `train_model.py` / `train_model_linear.py` | Standalone model trainers |
-| `checkModel.py` / `checkModel_linear.py` | Standalone model evaluators (metrics + plots) |
-| `index.html` | Dashboard UI |
-| `pump/` | Persistent data: CSV history, trained models, metadata, plots |
+| `repository.yaml` | Add-on repository manifest (required for Supervisor to recognize this repo) |
+| `heatpumptrain/config.yaml` | Home Assistant add-on manifest |
+| `heatpumptrain/Dockerfile` | Add-on container image |
+| `heatpumptrain/server.py` | Flask/waitress server — dashboard, training orchestration, prediction/status endpoints, sensor scheduling |
+| `heatpumptrain/train_model.py` / `train_model_linear.py` | Standalone model trainers |
+| `heatpumptrain/checkModel.py` / `checkModel_linear.py` | Standalone model evaluators (metrics + plots) |
+| `heatpumptrain/index.html` | Dashboard UI |

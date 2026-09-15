@@ -1156,6 +1156,37 @@ def update_prediction_sensors():
         print(f"Error updating tomorrow's prediction sensors: {e}")
 
 
+def refresh_all_computed_sensors():
+    """
+    Recomputes/re-pushes every sensor this add-on publishes to Home Assistant: the
+    weather-blend sensors, RF/Linear predictions, and the MAE/R2/verification metric
+    sensors (re-read from their already-computed metadata/metrics files - no
+    re-training or checkModel re-run needed). Each underlying call already handles
+    its own errors/missing files, so this is safe to call any time, including right
+    after the WebSocket (re)connects to Home Assistant.
+    """
+    run_weather_sensor_updates()
+    update_prediction_sensors()
+    publish_mae_sensor(RF_MAE_ENTITY_ID, RF_METADATA_FILE, "RF Model Test MAE")
+    publish_mae_sensor(LR_MAE_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test MAE")
+    publish_r2_sensor(RF_R2_ENTITY_ID, RF_METADATA_FILE, "RF Model Test R2")
+    publish_r2_sensor(LR_R2_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test R2")
+    publish_verification_sensors(
+        RF_CHECK_METRICS_FILE,
+        RF_VERIFICATION_MAE_ENTITY_ID,
+        RF_VERIFICATION_R2_ENTITY_ID,
+        RF_VERIFICATION_MAPE_ENTITY_ID,
+        "RF Model"
+    )
+    publish_verification_sensors(
+        LINEAR_CHECK_METRICS_FILE,
+        LR_VERIFICATION_MAE_ENTITY_ID,
+        LR_VERIFICATION_R2_ENTITY_ID,
+        LR_VERIFICATION_MAPE_ENTITY_ID,
+        "Linear Model"
+    )
+
+
 def _ha_ws_url():
     if os.environ.get("SUPERVISOR_TOKEN"):
         return "ws://supervisor/core/websocket"
@@ -1214,6 +1245,16 @@ def watched_sensor_ws_listener():
                 raise RuntimeError(f"Failed to subscribe to state_changed events: {sub_result}")
 
             print(f"HA WebSocket connected, watching {', '.join(sorted(watched_entities))} for changes")
+
+            # A (re)connect means Home Assistant just became reachable again - most notably
+            # right after an HA restart/reload, which wipes this add-on's previously-pushed
+            # sensor states. Republish everything immediately instead of waiting for the
+            # next hourly scheduler tick.
+            try:
+                print("Refreshing all computed sensors after connecting to Home Assistant...")
+                refresh_all_computed_sensors()
+            except Exception as e:
+                print(f"Error refreshing sensors after WebSocket connect: {e}")
 
             while True:
                 message = json.loads(ws.recv())
@@ -1326,8 +1367,7 @@ def scheduler_thread():
             hour_key = now.strftime("%Y-%m-%d %H")
             if now.minute == 1 and _last_weather_update_hour != hour_key:
                 print(f"Running hourly weather/temperature sensor updates at {now}...")
-                run_weather_sensor_updates()
-                update_prediction_sensors()
+                refresh_all_computed_sensors()
                 _last_weather_update_hour = hour_key
 
             if now.hour == AUTO_TRAIN_HOUR and now.minute == AUTO_TRAIN_MINUTE:
@@ -1555,37 +1595,13 @@ if __name__ == '__main__':
     print("FLASK SERVER - HEAT PUMP MODEL TRAINING")
     print("="*70)
 
-    # Publish HA sensors from any existing metadata so they're available right after a restart
-    publish_mae_sensor(RF_MAE_ENTITY_ID, RF_METADATA_FILE, "RF Model Test MAE")
-    publish_mae_sensor(LR_MAE_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test MAE")
-    publish_r2_sensor(RF_R2_ENTITY_ID, RF_METADATA_FILE, "RF Model Test R2")
-    publish_r2_sensor(LR_R2_ENTITY_ID, LINEAR_METADATA_FILE, "Linear Model Test R2")
-    publish_verification_sensors(
-        RF_CHECK_METRICS_FILE,
-        RF_VERIFICATION_MAE_ENTITY_ID,
-        RF_VERIFICATION_R2_ENTITY_ID,
-        RF_VERIFICATION_MAPE_ENTITY_ID,
-        "RF Model"
-    )
-    publish_verification_sensors(
-        LINEAR_CHECK_METRICS_FILE,
-        LR_VERIFICATION_MAE_ENTITY_ID,
-        LR_VERIFICATION_R2_ENTITY_ID,
-        LR_VERIFICATION_MAPE_ENTITY_ID,
-        "Linear Model"
-    )
-
-    # Seed the weather/temperature computed sensors so they aren't empty until the next hourly update
+    # Seed every computed/published sensor (weather, predictions, MAE/R2, verification) from
+    # cached files/metadata so they're available right after a restart, instead of being empty
+    # until the next hourly update.
     try:
-        run_weather_sensor_updates()
+        refresh_all_computed_sensors()
     except Exception as e:
-        print(f"Error running initial weather sensor updates: {e}")
-
-    # Seed the RF/Linear prediction sensors so they aren't empty until the next temp_sensor change
-    try:
-        update_prediction_sensors()
-    except Exception as e:
-        print(f"Error running initial prediction sensor updates: {e}")
+        print(f"Error running initial sensor refresh: {e}")
 
     # Start the background thread for automatic logging
     t = threading.Thread(target=scheduler_thread)

@@ -2,7 +2,16 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.54` (see `config.yaml`)
+## Current version: `4.55` (see `config.yaml`)
+
+## 33. Fixed MAE/R2/verification sensors going missing after a Home Assistant restart
+
+`sensor.rf_mae`/`rf_r2`/`lr_mae`/`lr_r2` and the six `*_verification_*` sensors (MAE/R2/mean error for both models) were only (re-)published right after the add-on container starts or right after a training run finishes. Their state is pushed via the HA REST states API, which doesn't survive a Home Assistant restart/reload — and since this add-on runs in its own container that doesn't restart along with HA Core, nothing re-pushed them until the next daily training at 00:10. The weather/prediction sensors didn't have this problem because they're already refreshed every hour by the scheduler thread.
+
+Fixed in two layers, both re-reading the already-computed metadata/metrics files (`model_metadata_rf.json`, `model_metadata_linear.json`, `dane.json`, `dane_linear.json`) — no re-training or re-running `checkModel.py` needed:
+
+- Extracted `refresh_all_computed_sensors()` (weather-blend + prediction + MAE/R2 + verification sensors) and call it from the existing hourly scheduler tick, so at worst these sensors self-heal within an hour.
+- Also call it right after the add-on's WebSocket client (re)connects to Home Assistant's API in `watched_sensor_ws_listener()`. A Home Assistant restart drops that WebSocket connection, so the automatic reconnect is an early, reliable signal that HA just came back — this republishes every sensor within seconds of HA finishing its restart, instead of waiting for the next hourly tick.
 
 ## 32. Added the add-on `url` field (config.yaml)
 

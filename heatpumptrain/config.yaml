@@ -1,5 +1,5 @@
 name: "Heat Pump prediction"
-version: "4.55"
+version: "4.56"
 slug: "pompa_addon"
 url: "https://github.com/xamrex/ha-heatpump-prediction/blob/master/heatpumptrain/DOCS.md"
 description: >-

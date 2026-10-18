@@ -58,8 +58,8 @@ def train_linear_model():
         return False
 
     df = df.dropna(subset=required_columns)
-    if len(df) < 5:
-        print(f"[ERROR] Not enough data ({len(df)} rows, minimum 5)")
+    if len(df) < 3:
+        print(f"[ERROR] Not enough data ({len(df)} rows, minimum 3)")
         return False
 
     # Create the heating_degree feature

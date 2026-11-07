@@ -60,11 +60,44 @@ if "heating_degree" not in df.columns:
     df["heating_degree"] = np.maximum(0, 18 - df["avg_temp"])
 
 # =============================
-# 4. Prediction
+# 4. Prediction (frozen / historical)
 # =============================
 feature_names = ["avg_temp", "avg_temp_48h", "heating_degree", "avg_humidity"]
 
-df["predicted_energy"] = model.predict(df[feature_names])
+# "predicted_energy_linear" is captured once per day in daily_temps.csv (by server.py's
+# log_daily_data, at 23:59) from the live sensor.heat_pump_pred_today_linear value - i.e.
+# what the model actually predicted for that day, using whichever model was live then.
+# It must NOT be recomputed here: doing so on every run (after every retraining) is
+# exactly what used to make the chart's historical predictions silently shift each time
+# the model learned something new. Only genuinely missing values (legacy rows logged
+# before this column existed, or a day whose snapshot failed to capture) are backfilled
+# below, once, with the CURRENT model - and then written back to daily_temps.csv so
+# they freeze too and are never recomputed again on a future run.
+if "predicted_energy_linear" not in df.columns:
+    df["predicted_energy_linear"] = np.nan
+df["predicted_energy_linear"] = pd.to_numeric(df["predicted_energy_linear"], errors="coerce")
+
+missing_mask = df["predicted_energy_linear"].isna()
+if missing_mask.any():
+    df.loc[missing_mask, "predicted_energy_linear"] = np.round(
+        model.predict(df.loc[missing_mask, feature_names]), 2
+    )
+    print(f"[INFO] Backfilled {int(missing_mask.sum())} missing historical Linear prediction(s) "
+          f"with the current model (frozen from now on).")
+
+    try:
+        src_df = pd.read_csv(input_csv)
+        if "predicted_energy_linear" not in src_df.columns:
+            src_df["predicted_energy_linear"] = np.nan
+        src_df["predicted_energy_linear"] = pd.to_numeric(src_df["predicted_energy_linear"], errors="coerce")
+        src_df = src_df.set_index("date")
+        src_df.update(df.set_index("date")[["predicted_energy_linear"]])
+        src_df.reset_index().to_csv(input_csv, index=False)
+        print(f"[OK] Persisted backfilled Linear predictions back to: {input_csv}")
+    except Exception as e:
+        print(f"[WARNING] Could not persist backfilled Linear predictions to {input_csv}: {e}")
+
+df["predicted_energy"] = df["predicted_energy_linear"]
 
 # =============================
 # 5. Save results

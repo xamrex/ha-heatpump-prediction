@@ -2,7 +2,38 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.55` (see `config.yaml`)
+## Current version: `4.57` (see `config.yaml`)
+
+## 34. Frozen historical predictions - the chart no longer rewrites the past on every retrain
+
+Previously `checkModel.py`/`checkModel_linear.py` recomputed `predicted_energy` for
+**every** row in `daily_temps.csv` on every run (i.e. after every daily 00:10
+auto-retrain), using whatever model had just been (re)trained. So the "Prediction"
+line on the historical chart silently changed for already-elapsed days each time the
+model learned something new - there was no record of what the model actually
+predicted for a given day at the time.
+
+Fixed by freezing one prediction value per day, captured once and never recomputed:
+
+- `server.py`'s `log_daily_data()` (runs at 23:59, right before the day rolls over
+  and before the next auto-retrain at 00:10) now also reads the *current* value of
+  `sensor.heat_pump_pred_today_rf` / `sensor.heat_pump_pred_today_linear` - by that
+  time of day these are based mostly on actual temperature/humidity rather than
+  forecast - and writes it into two new `daily_temps.csv` columns,
+  `predicted_energy_rf` and `predicted_energy_linear`. Once a date's row stops being
+  "today" (a later call is for a different date), nothing touches it again.
+- `checkModel.py` / `checkModel_linear.py` no longer call `model.predict()` on the
+  whole dataframe. They only fill in `predicted_energy_rf` / `predicted_energy_linear`
+  for rows where it's still missing (legacy rows from before this change, or a day
+  whose snapshot failed to capture) - using the current model, once - and then persist
+  that backfilled value back into `daily_temps.csv` so it freezes too. Existing
+  (already-logged) history keeps exactly whatever value it already had, verified with
+  a reproduction test that swapped in a completely different model between runs.
+- The model itself keeps retraining daily as before - this only affects how the chart
+  displays already-elapsed days, not the live `today`/`tomorrow` prediction sensors or
+  future training.
+- `/csv_data` (`CSV_COLUMNS`) now also exposes the two new columns, so they show up in
+  the dashboard's CSV preview modal.
 
 ## 33. Fixed MAE/R2/verification sensors going missing after a Home Assistant restart
 

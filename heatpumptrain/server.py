@@ -1307,23 +1307,46 @@ def fetch_all_sensors():
 def log_daily_data(date_str=None):
     if not date_str:
         date_str = datetime.now().strftime("%Y-%m-%d")
-        
+
     data = fetch_all_sensors()
-    
+
+    # Freeze today's RF/Linear predictions at logging time (23:59), reading the
+    # "today" prediction sensors' CURRENT value: by this point in the day they are
+    # based mostly on actual temperature/humidity (not forecast), and the model that
+    # produced them is whatever was live all day - the next auto-retraining only
+    # happens later (00:10). Writing it into daily_temps.csv here means it becomes
+    # part of the permanent historical record: once this date's row stops being
+    # "today" (i.e. a later log_daily_data call is for a different date_str), nothing
+    # ever touches it again, so future retrainings cannot retroactively change what
+    # the chart shows for this day - only new days are affected by a newly trained model.
+    predicted_rf = None
+    predicted_linear = None
+    try:
+        predicted_rf = get_sensor_state(PREDICTION_SENSOR_IDS["today_rf"])
+    except Exception as e:
+        print(f"Could not capture frozen RF prediction for {date_str}: {e}")
+    try:
+        predicted_linear = get_sensor_state(PREDICTION_SENSOR_IDS["today_linear"])
+    except Exception as e:
+        print(f"Could not capture frozen Linear prediction for {date_str}: {e}")
+
     row_data = {
         "date": date_str,
         "avg_temp": round(data["avg_temp"], 2),
         "avg_temp_48h": round(data["avg_temp_48h"], 2),
         "avg_humidity": round(data["avg_humidity"], 2),
-        "energy_consumption": round(data["energy_consumption"], 2)
+        "energy_consumption": round(data["energy_consumption"], 2),
+        "predicted_energy_rf": round(predicted_rf, 2) if predicted_rf is not None else "",
+        "predicted_energy_linear": round(predicted_linear, 2) if predicted_linear is not None else "",
     }
-    
+
     os.makedirs(os.path.dirname(CSV_FILE), exist_ok=True)
-    
+
     updated = False
     rows = []
-    headers = ["date", "avg_temp", "avg_temp_48h", "avg_humidity", "energy_consumption"]
-    
+    headers = ["date", "avg_temp", "avg_temp_48h", "avg_humidity", "energy_consumption",
+               "predicted_energy_rf", "predicted_energy_linear"]
+
     if os.path.exists(CSV_FILE):
         try:
             with open(CSV_FILE, mode='r', newline='', encoding='utf-8') as f:
@@ -1336,10 +1359,10 @@ def log_daily_data(date_str=None):
                         rows.append(r)
         except Exception as e:
             print(f"Error reading CSV, creating new file: {e}")
-            
+
     if not updated:
         rows.append(row_data)
-        
+
     with open(CSV_FILE, mode='w', newline='', encoding='utf-8') as f:
         writer = csv.DictWriter(f, fieldnames=headers)
         writer.writeheader()
@@ -1349,9 +1372,14 @@ def log_daily_data(date_str=None):
                 "avg_temp": r.get("avg_temp"),
                 "avg_temp_48h": r.get("avg_temp_48h"),
                 "avg_humidity": r.get("avg_humidity"),
-                "energy_consumption": r.get("energy_consumption")
+                "energy_consumption": r.get("energy_consumption"),
+                # r.get(...) keeps whatever was already frozen for rows we aren't
+                # touching (including values checkModel*.py may have backfilled);
+                # default "" only applies to legacy rows that never got a snapshot.
+                "predicted_energy_rf": r.get("predicted_energy_rf", ""),
+                "predicted_energy_linear": r.get("predicted_energy_linear", ""),
             })
-            
+
     return row_data, "updated" if updated else "appended"
 
 _last_weather_update_hour = None
@@ -1498,7 +1526,8 @@ def computed_sensors_view():
     return jsonify({"status": "success", "sensors": sensors}), 200
 
 
-CSV_COLUMNS = ["date", "avg_temp", "avg_temp_48h", "avg_humidity", "energy_consumption"]
+CSV_COLUMNS = ["date", "avg_temp", "avg_temp_48h", "avg_humidity", "energy_consumption",
+               "predicted_energy_rf", "predicted_energy_linear"]
 
 @app.route('/csv_data', methods=['GET'])
 def csv_data_view():

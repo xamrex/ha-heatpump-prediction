@@ -2,7 +2,17 @@
 
 Running log of what's been built in this add-on beyond the original baseline (Random Forest + Linear Regression training/prediction). Kept up to date so a new session can pick up context without re-reading the full diff.
 
-## Current version: `4.57` (see `config.yaml`)
+## Current version: `4.58` (see `config.yaml`)
+
+## 35. Added an "average temperature over time" panel to both result charts
+
+`checkModel.py` and `checkModel_linear.py` now render a 3rd chart panel, placed
+between the existing "actual vs prediction" (top) and "model behavior vs
+temperature" (bottom) panels. It plots `avg_temp` straight from `daily_temps.csv`
+against the same date axis as the top panel, so you can visually line up a spike or
+dip in predicted/actual consumption with what the outdoor temperature was doing that
+day, without cross-referencing the CSV by hand. Figure height grew from `(10, 9)` to
+`(10, 13)` to fit the extra panel.
 
 ## 34. Frozen historical predictions - the chart no longer rewrites the past on every retrain
 

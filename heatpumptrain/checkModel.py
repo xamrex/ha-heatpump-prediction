@@ -160,7 +160,7 @@ print(f"[OK] Metrics saved to file: {metrics_file}")
 if show_plot:
     has_actual = "energy_consumption" in df.columns
 
-    fig, (ax_time, ax_temp) = plt.subplots(2, 1, figsize=(10, 9))
+    fig, (ax_time, ax_date_temp, ax_temp) = plt.subplots(3, 1, figsize=(10, 13))
 
     # ---- Panel 1: energy over time (unchanged, original chart) ----
     ax_time.plot(df["date"], df["predicted_energy"], label="Prediction (kWh)",
@@ -175,7 +175,18 @@ if show_plot:
     ax_time.tick_params(axis='x', rotation=45)
     ax_time.legend(loc="best")
 
-    # ---- Panel 2: energy vs temperature (how the model behaves per temperature) ----
+    # ---- Panel 2: average temperature over time (same date axis as panel 1) ----
+    ax_date_temp.plot(df["date"], df["avg_temp"], label="Avg. temperature (°C)",
+                       marker='o', color="tab:orange")
+
+    ax_date_temp.set_xlabel("Date")
+    ax_date_temp.set_ylabel("Avg. temperature [C]")
+    ax_date_temp.set_title("Average temperature over time")
+    ax_date_temp.tick_params(axis='x', rotation=45)
+    ax_date_temp.legend(loc="best")
+    ax_date_temp.grid(True, alpha=0.3)
+
+    # ---- Panel 3: energy vs temperature (how the model behaves per temperature) ----
     order = df["avg_temp"].argsort()
     temp_sorted = df["avg_temp"].values[order]
     pred_sorted = df["predicted_energy"].values[order]
